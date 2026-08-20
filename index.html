@@ -219,8 +219,6 @@ textarea{
     font-size:12px;
 }
 
-/* Eigene Karten-Pins */
-
 .map-pin{
     width:24px;
     height:24px;
@@ -312,8 +310,7 @@ textarea{
 
         <div class="small">
             <span id="count">0 Anzeigen</span>
-            · Fahrzeuge rot, sonstige Anzeigen blau.
-            Erledigte Anzeigen werden blass dargestellt.
+            · Autos rot, alles andere blau.
         </div>
 
     </div>
@@ -377,11 +374,6 @@ textarea{
 
         <button id="saveSearchButton">Suche speichern</button>
 
-        <p class="small">
-            Die Abholkarte übernimmt die Suchparameter soweit sie im
-            Kleinanzeigen-Link enthalten sind.
-        </p>
-
     </div>
 
     <div id="searches" class="card">
@@ -410,10 +402,6 @@ textarea{
         <button id="routeButton">
             Optimale Reihenfolge berechnen
         </button>
-
-        <p class="small">
-            Verwendet alle angehakten Anzeigen.
-        </p>
 
     </div>
 
@@ -452,11 +440,6 @@ textarea{
 
         <button id="settingsButton">Speichern</button>
 
-        <p class="small">
-            Der direkte Abruf wird bevorzugt.
-            Die API kann als Fallback verwendet werden.
-        </p>
-
     </div>
 
 </section>
@@ -481,7 +464,6 @@ textarea{
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-
 "use strict";
 
 let ads = [];
@@ -492,13 +474,7 @@ let cfg = {};
 
 const $ = id => document.getElementById(id);
 
-
-/* KARTE */
-
-const map = L.map("map").setView(
-    [51.1, 10.2],
-    6
-);
+const map = L.map("map").setView([51.1,10.2],6);
 
 L.tileLayer(
     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -508,26 +484,19 @@ L.tileLayer(
     }
 ).addTo(map);
 
-
-/* API */
-
 async function api(url, options = {}) {
-
-    const settings = {
-        headers:{
-            "Content-Type":"application/json"
-        },
-        ...options
-    };
 
     const response = await fetch(
         url,
-        settings
+        {
+            headers:{
+                "Content-Type":"application/json"
+            },
+            ...options
+        }
     );
 
-    const data = await response
-        .json()
-        .catch(() => ({}));
+    const data = await response.json().catch(() => ({}));
 
     if(
         response.status === 401 &&
@@ -548,14 +517,9 @@ async function api(url, options = {}) {
     return data;
 }
 
-
-/* HTML sicher ausgeben */
-
 function esc(value){
 
-    return String(
-        value == null ? "" : value
-    ).replace(
+    return String(value == null ? "" : value).replace(
         /[&<>"']/g,
         char => ({
             "&":"&amp;",
@@ -567,14 +531,9 @@ function esc(value){
     );
 }
 
-
-/* KLEINANZEIGEN-LINK AUS TEILEN-TEXT */
-
 function extractKleinanzeigenUrl(text){
 
-    const value = String(
-        text || ""
-    ).trim();
+    const value = String(text || "").trim();
 
     const match = value.match(
         /https?:\/\/(?:www\.)?kleinanzeigen\.de\/[^\s]+/i
@@ -591,48 +550,27 @@ function extractKleinanzeigenUrl(text){
 }
 
 
-/* FAHRZEUG ERKENNUNG */
+/* Nur echte Auto-Kategorie rot */
 
 function isVehicle(ad){
 
-    const url = String(
-        ad.url || ""
-    );
-
-    const title = String(
-        ad.title || ""
-    );
+    const url = String(ad.url || "");
 
     /*
-      Kleinanzeigen-Kategorie 216:
-      Autos
+      Beispiel:
+      .../3473515953-216-5935
+
+      216 = Kategorie Autos
     */
 
-    if(
-        /-216-\d+(?:[/?]|$)/.test(url)
-    ){
-        return true;
-    }
-
-    /*
-      Zusätzliche Erkennung über Titel
-    */
-
-    const vehicleWords =
-        /\b(auto|pkw|fahrzeug|dacia|spring|vw|volkswagen|audi|bmw|mercedes|benz|fiat|kia|skoda|seat|renault|peugeot|citroen|citroën|opel|ford|toyota|hyundai|honda|mazda|nissan|tesla|volvo|porsche|smart|suzuki|mitsubishi|jeep|land rover|range rover|alfa|lancia|mini)\b/i;
-
-    return vehicleWords.test(title);
+    return /-\d+-216-\d+(?:[/?]|$)/.test(url)
+        || /-216-\d+(?:[/?]|$)/.test(url);
 }
 
 
-/* PIN-ICON */
-
 function pinIcon(vehicle){
 
-    const color =
-        vehicle
-            ? "red"
-            : "blue";
+    const color = vehicle ? "red" : "blue";
 
     return L.divIcon({
         className:"",
@@ -647,15 +585,11 @@ function pinIcon(vehicle){
 }
 
 
-/* START */
-
 async function boot(){
 
     try{
 
-        cfg = await fetch(
-            "/api/config"
-        ).then(
+        cfg = await fetch("/api/config").then(
             response => response.json()
         );
 
@@ -677,8 +611,6 @@ async function boot(){
     }
 }
 
-
-/* LOGIN */
 
 async function login(){
 
@@ -705,19 +637,12 @@ async function login(){
 }
 
 
-/* DATEN LADEN */
-
 async function loadAll(){
 
     try{
 
-        ads = await api(
-            "/api/ads"
-        );
-
-        searches = await api(
-            "/api/searches"
-        );
+        ads = await api("/api/ads");
+        searches = await api("/api/searches");
 
         renderAds();
         renderSearches();
@@ -740,34 +665,23 @@ async function loadAll(){
 }
 
 
-/* TABS */
-
-document
-.querySelectorAll(".tab")
-.forEach(button => {
+document.querySelectorAll(".tab").forEach(button => {
 
     button.addEventListener(
         "click",
         () => {
 
-            document
-            .querySelectorAll(".tab")
-            .forEach(
-                element =>
-                    element.classList.remove("active")
+            document.querySelectorAll(".tab").forEach(
+                element => element.classList.remove("active")
             );
 
-            document
-            .querySelectorAll(".pane")
-            .forEach(
-                element =>
-                    element.classList.add("hidden")
+            document.querySelectorAll(".pane").forEach(
+                element => element.classList.add("hidden")
             );
 
             button.classList.add("active");
 
-            const pane =
-                $(button.dataset.tab);
+            const pane = $(button.dataset.tab);
 
             if(pane){
                 pane.classList.remove("hidden");
@@ -781,8 +695,6 @@ document
     );
 });
 
-
-/* ANZEIGEN DARSTELLEN */
 
 function renderAds(){
 
@@ -808,14 +720,11 @@ function renderAds(){
         .join(" ")
         .toLowerCase();
 
-        return text.includes(
-            filterText
-        );
+        return text.includes(filterText);
     });
 
     $("count").textContent =
-        visible.length +
-        " Anzeigen";
+        visible.length + " Anzeigen";
 
 
     if(!visible.length){
@@ -869,9 +778,7 @@ function renderAds(){
                                     ${esc(ad.price_text || "")}
                                 </span>
 
-                                ·
-
-                                ${esc(ad.place || "Ort unbekannt")}
+                                · ${esc(ad.place || "Ort unbekannt")}
 
                                 ·
 
@@ -916,10 +823,6 @@ function renderAds(){
     }
 
 
-    /*
-       Checkboxen
-    */
-
     document
     .querySelectorAll("[data-select-id]")
     .forEach(element => {
@@ -937,10 +840,6 @@ function renderAds(){
     });
 
 
-    /*
-       Karte Buttons
-    */
-
     document
     .querySelectorAll("[data-map-id]")
     .forEach(element => {
@@ -956,10 +855,6 @@ function renderAds(){
         );
     });
 
-
-    /*
-       Links
-    */
 
     document
     .querySelectorAll("[data-open-url]")
@@ -983,10 +878,6 @@ function renderAds(){
     });
 
 
-    /*
-       Löschen
-    */
-
     document
     .querySelectorAll("[data-delete-id]")
     .forEach(element => {
@@ -1003,17 +894,10 @@ function renderAds(){
     });
 
 
-    /*
-       Marker
-    */
-
     visible.forEach(ad => {
 
-        const lat =
-            Number(ad.lat);
-
-        const lon =
-            Number(ad.lon);
+        const lat = Number(ad.lat);
+        const lon = Number(ad.lon);
 
         if(
             !Number.isFinite(lat) ||
@@ -1048,17 +932,12 @@ function renderAds(){
             esc(ad.place || "")
         );
 
-        marker._aid =
-            ad.id;
+        marker._aid = ad.id;
 
-        markers.push(
-            marker
-        );
+        markers.push(marker);
     });
 }
 
-
-/* AUSWAHL */
 
 async function selectAd(id,value){
 
@@ -1069,10 +948,7 @@ async function selectAd(id,value){
             {
                 method:"PATCH",
                 body:JSON.stringify({
-                    selected:
-                        value
-                            ? 1
-                            : 0
+                    selected:value ? 1 : 0
                 })
             }
         );
@@ -1096,8 +972,6 @@ async function selectAd(id,value){
     }
 }
 
-
-/* ALLE SICHTBAREN AUSWÄHLEN */
 
 async function selectVisible(){
 
@@ -1144,8 +1018,6 @@ async function selectVisible(){
 }
 
 
-/* AUF ANZEIGE ZOOMEN */
-
 function focusAd(id){
 
     const ad =
@@ -1158,11 +1030,8 @@ function focusAd(id){
         return;
     }
 
-    const lat =
-        Number(ad.lat);
-
-    const lon =
-        Number(ad.lon);
+    const lat = Number(ad.lat);
+    const lon = Number(ad.lon);
 
     if(
         Number.isFinite(lat) &&
@@ -1176,8 +1045,6 @@ function focusAd(id){
     }
 }
 
-
-/* ANZEIGE LÖSCHEN */
 
 async function deleteAd(id){
 
@@ -1206,8 +1073,6 @@ async function deleteAd(id){
     }
 }
 
-
-/* AUTOMATISCH IMPORTIEREN */
 
 async function importAd(){
 
@@ -1244,8 +1109,7 @@ async function importAd(){
         $("importmsg").textContent =
             "Anzeige importiert.";
 
-        $("adurl").value =
-            "";
+        $("adurl").value = "";
 
         await loadAll();
 
@@ -1260,8 +1124,6 @@ async function importAd(){
     }
 }
 
-
-/* MANUELL HINZUFÜGEN */
 
 async function manualAd(){
 
@@ -1308,8 +1170,6 @@ async function manualAd(){
 }
 
 
-/* SUCHE SPEICHERN */
-
 async function addSearch(){
 
     try{
@@ -1335,7 +1195,8 @@ async function addSearch(){
                         url:url,
 
                         name:
-                            $("sname").value
+                            $("sname")
+                            .value
                             .trim()
                     })
                 }
@@ -1360,8 +1221,6 @@ async function addSearch(){
 }
 
 
-/* SUCHEN DARSTELLEN */
-
 function renderSearches(){
 
     if(!searches.length){
@@ -1383,17 +1242,7 @@ function renderSearches(){
                 </h3>
 
                 <div class="meta">
-
                     ${esc(search.query || "")}
-
-                    ${
-                        search.distance
-                            ? " · " +
-                              esc(search.distance) +
-                              " km"
-                            : ""
-                    }
-
                 </div>
 
                 <div class="toolbar">
@@ -1451,8 +1300,6 @@ function renderSearches(){
 }
 
 
-/* SUCHE SYNCHRONISIEREN */
-
 async function syncSearch(id){
 
     try{
@@ -1484,8 +1331,6 @@ async function syncSearch(id){
 }
 
 
-/* SUCHE LÖSCHEN */
-
 async function deleteSearch(id){
 
     if(
@@ -1513,8 +1358,6 @@ async function deleteSearch(id){
     }
 }
 
-
-/* ANZEIGEN AKTUALISIEREN */
 
 async function refreshAll(){
 
@@ -1551,8 +1394,6 @@ async function refreshAll(){
     }
 }
 
-
-/* ROUTE */
 
 async function planRoute(){
 
@@ -1642,8 +1483,6 @@ async function planRoute(){
 }
 
 
-/* EINSTELLUNGEN */
-
 async function updateSetupStatus(){
 
     try{
@@ -1675,9 +1514,7 @@ async function updateSetupStatus(){
 
     }catch(error){
 
-        console.log(
-            error
-        );
+        console.log(error);
     }
 }
 
@@ -1743,64 +1580,17 @@ async function saveSettings(){
 }
 
 
-/* BUTTONS */
+$("loginButton").addEventListener("click",login);
+$("refreshButton").addEventListener("click",refreshAll);
+$("selectAllButton").addEventListener("click",selectVisible);
+$("filter").addEventListener("input",renderAds);
+$("importButton").addEventListener("click",importAd);
+$("manualButton").addEventListener("click",manualAd);
+$("saveSearchButton").addEventListener("click",addSearch);
+$("routeButton").addEventListener("click",planRoute);
+$("settingsButton").addEventListener("click",saveSettings);
 
-$("loginButton")
-.addEventListener(
-    "click",
-    login
-);
-
-$("refreshButton")
-.addEventListener(
-    "click",
-    refreshAll
-);
-
-$("selectAllButton")
-.addEventListener(
-    "click",
-    selectVisible
-);
-
-$("filter")
-.addEventListener(
-    "input",
-    renderAds
-);
-
-$("importButton")
-.addEventListener(
-    "click",
-    importAd
-);
-
-$("manualButton")
-.addEventListener(
-    "click",
-    manualAd
-);
-
-$("saveSearchButton")
-.addEventListener(
-    "click",
-    addSearch
-);
-
-$("routeButton")
-.addEventListener(
-    "click",
-    planRoute
-);
-
-$("settingsButton")
-.addEventListener(
-    "click",
-    saveSettings
-);
-
-$("pin")
-.addEventListener(
+$("pin").addEventListener(
     "keydown",
     event => {
 
@@ -1810,8 +1600,6 @@ $("pin")
     }
 );
 
-
-/* SERVICE WORKER */
 
 if(
     "serviceWorker" in navigator
@@ -1825,9 +1613,6 @@ if(
             console.log(error)
     );
 }
-
-
-/* LOS */
 
 boot();
 
