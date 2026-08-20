@@ -1,47 +1,1465 @@
-<!doctype html><html lang="de"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111827">
-<title>Abholkarte</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png">
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+
+<title>Abholkarte</title>
+
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f4f6;color:#111827}header{position:sticky;top:0;z-index:1000;background:#111827;color:#fff;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;justify-content:space-between}h1{font-size:19px;margin:0}.small{font-size:12px;color:#6b7280}.shell{display:grid;grid-template-columns:minmax(320px,420px) 1fr;height:calc(100dvh - 52px)}aside{overflow:auto;padding:12px}.mapwrap{position:relative}#map{height:100%;width:100%}.card{background:#fff;border-radius:14px;padding:12px;margin-bottom:10px;box-shadow:0 1px 8px #00000010}.tabs{display:flex;gap:6px;overflow:auto;margin-bottom:10px}.tab{background:#e5e7eb;color:#111827;white-space:nowrap}.tab.active{background:#111827;color:#fff}button{border:0;border-radius:10px;padding:10px 12px;font-weight:700;background:#111827;color:#fff}button.alt{background:#e5e7eb;color:#111827}button.warn{background:#fee2e2;color:#991b1b}input,textarea{width:100%;border:1px solid #d1d5db;border-radius:10px;padding:11px;font-size:16px;margin:5px 0}textarea{min-height:70px}.row{display:flex;gap:7px}.row>*{flex:1}.hidden{display:none!important}.item{border-top:1px solid #eee;padding:10px 0}.item:first-child{border-top:0}.item h3{font-size:14px;margin:0 0 3px}.meta{font-size:12px;color:#6b7280}.price{font-weight:800}.badge{display:inline-block;border-radius:999px;background:#e5e7eb;padding:2px 7px;font-size:11px}.inactive{opacity:.45}.toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.toolbar button{padding:7px 9px;font-size:12px}.routebox{position:absolute;top:10px;right:10px;z-index:500;background:white;border-radius:12px;padding:10px;max-width:280px;box-shadow:0 2px 14px #0003}.routebox ol{padding-left:20px;font-size:12px}.login{position:fixed;inset:0;background:#111827;z-index:3000;display:grid;place-items:center}.login .card{width:min(90vw,340px)}@media(max-width:800px){.shell{display:block;height:auto}.mapwrap{height:52dvh;position:sticky;top:52px;z-index:100}.routebox{max-width:220px}.shell aside{padding-bottom:calc(80px + env(safe-area-inset-bottom))}}
-</style></head><body>
-<div id="login" class="login hidden"><div class="card"><h2>Abholkarte</h2><input id="pin" inputmode="numeric" placeholder="PIN"><button onclick="login()">Öffnen</button></div></div>
-<header><h1>Abholkarte</h1><button class="alt" onclick="refreshAll()">↻ Aktualisieren</button></header>
-<div class="shell"><aside>
-<div class="tabs"><button class="tab active" data-tab="ads">Anzeigen</button><button class="tab" data-tab="add">Hinzufügen</button><button class="tab" data-tab="search">Suchen</button><button class="tab" data-tab="route">Route</button><button class="tab" data-tab="settings">Einstellungen</button></div>
-<section id="ads" class="pane"><div class="card"><div class="row"><input id="filter" placeholder="Filtern…" oninput="renderAds()"><button class="alt" onclick="selectVisible()">Alle wählen</button></div><div class="small"><span id="count"></span> · aktive Anzeigen werden farbig, erledigte blass angezeigt.</div></div><div id="adlist" class="card"></div></section>
-<section id="add" class="pane hidden"><div class="card"><h3>Link automatisch importieren</h3><input id="adurl" placeholder="Kleinanzeigen-Link einfügen"><button onclick="importAd()">Importieren</button><div id="importmsg" class="small"></div></div><div class="card"><h3>Manuell hinzufügen</h3><input id="mtitle" placeholder="Titel"><input id="mprice" placeholder="Preis"><input id="mplace" placeholder="PLZ / Ort"><input id="murl" placeholder="Kleinanzeigen-Link"><button onclick="manualAd()">Speichern</button></div></section>
-<section id="search" class="pane hidden"><div class="card"><h3>Komplette Kleinanzeigen-Suche</h3><input id="surl" placeholder="Suchlink aus Kleinanzeigen"><input id="sname" placeholder="Name, z. B. Fiat 500"><button onclick="addSearch()">Suche speichern</button><p class="small">Die App liest Suchbegriff, Kategorie, Standort-ID, Radius und Preisfilter soweit sie im Kleinanzeigen-Link codiert sind. Danach synchronisieren.</p></div><div id="searches" class="card"></div></section>
-<section id="route" class="pane hidden"><div class="card"><h3>Abholroute planen</h3><input id="rstart" placeholder="Start, z. B. 97783 Karsbach"><input id="rend" placeholder="Ziel – leer = Rundfahrt"><button onclick="planRoute()">Optimale Reihenfolge berechnen</button><p class="small">Verwendet alle in „Anzeigen“ angehakten Pins.</p></div></section>
-<section id="settings" class="pane hidden"><div class="card"><h3>Einrichtung</h3><div id="setupstatus" class="small"></div><label class="small">Kleinanzeigen-Agent API-Key</label><input id="apikey" type="password" placeholder="klaz_live_…"><label class="small">App-PIN (optional)</label><input id="newpin" type="password" inputmode="numeric" placeholder="mindestens 4 Zeichen"><button onclick="saveSettings()">Speichern</button><p class="small">Der API-Key wird serverseitig gespeichert und niemals an den Browser zurückgegeben. Er ermöglicht automatischen Link-Import, Such-Synchronisierung und Statusprüfung.</p></div></section>
-</aside><div class="mapwrap"><div id="map"></div><div id="routebox" class="routebox hidden"></div></div></div>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f3f4f6;
+    color: #111827;
+}
+
+header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: #111827;
+    color: #fff;
+    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+h1 {
+    font-size: 19px;
+    margin: 0;
+}
+
+.small {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.shell {
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) 1fr;
+    height: calc(100dvh - 52px);
+}
+
+aside {
+    overflow: auto;
+    padding: 12px;
+}
+
+.mapwrap {
+    position: relative;
+}
+
+#map {
+    height: 100%;
+    width: 100%;
+}
+
+.card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 12px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 8px #00000010;
+}
+
+.tabs {
+    display: flex;
+    gap: 6px;
+    overflow: auto;
+    margin-bottom: 10px;
+}
+
+.tab {
+    background: #e5e7eb;
+    color: #111827;
+    white-space: nowrap;
+}
+
+.tab.active {
+    background: #111827;
+    color: #fff;
+}
+
+button {
+    border: 0;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-weight: 700;
+    background: #111827;
+    color: #fff;
+}
+
+button.alt {
+    background: #e5e7eb;
+    color: #111827;
+}
+
+button.warn {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+input,
+textarea {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 11px;
+    font-size: 16px;
+    margin: 5px 0;
+}
+
+textarea {
+    min-height: 70px;
+}
+
+.row {
+    display: flex;
+    gap: 7px;
+}
+
+.row > * {
+    flex: 1;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.item {
+    border-top: 1px solid #eee;
+    padding: 10px 0;
+}
+
+.item:first-child {
+    border-top: 0;
+}
+
+.item h3 {
+    font-size: 14px;
+    margin: 0 0 3px;
+}
+
+.meta {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.price {
+    font-weight: 800;
+}
+
+.badge {
+    display: inline-block;
+    border-radius: 999px;
+    background: #e5e7eb;
+    padding: 2px 7px;
+    font-size: 11px;
+}
+
+.inactive {
+    opacity: .45;
+}
+
+.toolbar {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 7px;
+}
+
+.toolbar button {
+    padding: 7px 9px;
+    font-size: 12px;
+}
+
+.routebox {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 500;
+    background: white;
+    border-radius: 12px;
+    padding: 10px;
+    max-width: 280px;
+    box-shadow: 0 2px 14px #0003;
+}
+
+.routebox ol {
+    padding-left: 20px;
+    font-size: 12px;
+}
+
+.login {
+    position: fixed;
+    inset: 0;
+    background: #111827;
+    z-index: 3000;
+    display: grid;
+    place-items: center;
+}
+
+.login .card {
+    width: min(90vw, 340px);
+}
+
+/* Eigene Stecknadeln */
+
+.map-pin {
+    width: 24px;
+    height: 24px;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px #0008;
+}
+
+.map-pin.red {
+    background: #dc2626;
+}
+
+.map-pin.blue {
+    background: #2563eb;
+}
+
+.map-pin > span {
+    display: block;
+    width: 8px;
+    height: 8px;
+    margin: 6px;
+    border-radius: 50%;
+    background: #fff;
+}
+
+@media(max-width:800px) {
+
+    .shell {
+        display: block;
+        height: auto;
+    }
+
+    .mapwrap {
+        height: 52dvh;
+        position: sticky;
+        top: 52px;
+        z-index: 100;
+    }
+
+    .routebox {
+        max-width: 220px;
+    }
+
+    .shell aside {
+        padding-bottom: calc(80px + env(safe-area-inset-bottom));
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div id="login" class="login hidden">
+    <div class="card">
+        <h2>Abholkarte</h2>
+        <input id="pin" placeholder="PIN">
+        <button onclick="login()">Öffnen</button>
+    </div>
+</div>
+
+<header>
+    <h1>Abholkarte</h1>
+    <button class="alt" onclick="refreshAll()">↻ Aktualisieren</button>
+</header>
+
+<div class="shell">
+
+<aside>
+
+<div class="tabs">
+    <button class="tab active" data-tab="ads">Anzeigen</button>
+    <button class="tab" data-tab="add">Hinzufügen</button>
+    <button class="tab" data-tab="search">Suchen</button>
+    <button class="tab" data-tab="route">Route</button>
+    <button class="tab" data-tab="settings">Einstellungen</button>
+</div>
+
+<section id="ads" class="pane">
+
+    <div class="card">
+
+        <div class="row">
+
+            <input
+                id="filter"
+                placeholder="Filtern…"
+                oninput="renderAds()"
+            >
+
+            <button
+                class="alt"
+                onclick="selectVisible()"
+            >
+                Alle wählen
+            </button>
+
+        </div>
+
+        <div class="small">
+            <span id="count"></span>
+            · Fahrzeuge rot, sonstige Anzeigen blau.
+            Erledigte Anzeigen werden blass dargestellt.
+        </div>
+
+    </div>
+
+    <div id="adlist" class="card"></div>
+
+</section>
+
+
+<section id="add" class="pane hidden">
+
+    <div class="card">
+
+        <h3>Link automatisch importieren</h3>
+
+        <input
+            id="adurl"
+            placeholder="Kleinanzeigen-Link oder kompletten Teilen-Text einfügen"
+        >
+
+        <button onclick="importAd()">
+            Importieren
+        </button>
+
+        <div id="importmsg" class="small"></div>
+
+    </div>
+
+
+    <div class="card">
+
+        <h3>Manuell hinzufügen</h3>
+
+        <input id="mtitle" placeholder="Titel">
+        <input id="mprice" placeholder="Preis">
+        <input id="mplace" placeholder="PLZ / Ort">
+        <input id="murl" placeholder="Kleinanzeigen-Link">
+
+        <button onclick="manualAd()">
+            Speichern
+        </button>
+
+    </div>
+
+</section>
+
+
+<section id="search" class="pane hidden">
+
+    <div class="card">
+
+        <h3>Komplette Kleinanzeigen-Suche</h3>
+
+        <input
+            id="surl"
+            placeholder="Suchlink aus Kleinanzeigen"
+        >
+
+        <input
+            id="sname"
+            placeholder="Name, z. B. Fiat 500"
+        >
+
+        <button onclick="addSearch()">
+            Suche speichern
+        </button>
+
+        <p class="small">
+            Die App liest Suchbegriff, Kategorie,
+            Standort-ID, Radius und Preisfilter,
+            soweit sie im Kleinanzeigen-Link enthalten sind.
+        </p>
+
+    </div>
+
+    <div id="searches" class="card"></div>
+
+</section>
+
+
+<section id="route" class="pane hidden">
+
+    <div class="card">
+
+        <h3>Abholroute planen</h3>
+
+        <input
+            id="rstart"
+            placeholder="Start, z. B. 97783 Karsbach"
+        >
+
+        <input
+            id="rend"
+            placeholder="Ziel – leer = Rundfahrt"
+        >
+
+        <button onclick="planRoute()">
+            Optimale Reihenfolge berechnen
+        </button>
+
+        <p class="small">
+            Verwendet alle in „Anzeigen“ angehakten Pins.
+        </p>
+
+    </div>
+
+</section>
+
+
+<section id="settings" class="pane hidden">
+
+    <div class="card">
+
+        <h3>Einrichtung</h3>
+
+        <div
+            id="setupstatus"
+            class="small"
+        ></div>
+
+        <label class="small">
+            Kleinanzeigen-Agent API-Key
+        </label>
+
+        <input
+            id="apikey"
+            type="password"
+            placeholder="klaz_live_…"
+        >
+
+        <label class="small">
+            App-PIN
+        </label>
+
+        <input
+            id="newpin"
+            type="password"
+            placeholder="mindestens 4 Zeichen"
+        >
+
+        <button onclick="saveSettings()">
+            Speichern
+        </button>
+
+        <p class="small">
+            Der direkte Abruf von Kleinanzeigen wird bevorzugt.
+            Die kostenpflichtige API kann optional als Fallback dienen.
+        </p>
+
+    </div>
+
+</section>
+
+</aside>
+
+
+<div class="mapwrap">
+
+    <div id="map"></div>
+
+    <div
+        id="routebox"
+        class="routebox hidden"
+    ></div>
+
+</div>
+
+</div>
+
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script>
-let ads=[], searches=[], markers=[], routeLayer=null, cfg={};
-const map=L.map('map').setView([51.1,10.2],6);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-async function api(url,opt={}){let r=await fetch(url,{headers:{'Content-Type':'application/json'},...opt});let j=await r.json().catch(()=>({}));if(r.status==401&&j.error==='PIN_REQUIRED'){document.getElementById('login').classList.remove('hidden');throw new Error('PIN')}if(!r.ok)throw new Error(j.error||'Fehler');return j}
-async function boot(){cfg=await fetch('/api/config').then(r=>r.json());if(cfg.needs_pin){document.getElementById('login').classList.remove('hidden');return}await loadAll();updateSetupStatus()}
-async function login(){try{await api('/api/login',{method:'POST',body:JSON.stringify({pin:pin.value})});document.getElementById('login').classList.add('hidden');loadAll()}catch(e){alert(e.message)}}
-async function loadAll(){ads=await api('/api/ads');searches=await api('/api/searches');renderAds();renderSearches();updateSetupStatus()}
-document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.pane').forEach(x=>x.classList.add('hidden'));document.getElementById(b.dataset.tab).classList.remove('hidden');setTimeout(()=>map.invalidateSize(),100)})
-function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function renderAds(){markers.forEach(m=>map.removeLayer(m));markers=[];let f=(filter.value||'').toLowerCase();let list=ads.filter(a=>(a.title+' '+a.place+' '+a.price_text).toLowerCase().includes(f));count.textContent=`${list.length} Anzeigen`;
- adlist.innerHTML=list.map(a=>`<div class="item ${a.deleted?'inactive':''}"><div class="row"><label style="flex:0"><input type="checkbox" ${a.selected?'checked':''} onchange="sel(${a.id},this.checked)" style="width:auto"></label><div><h3>${esc(a.title)}</h3><div class="meta"><span class="price">${esc(a.price_text||'')}</span> · ${esc(a.place||'Ort unbekannt')} · <span class="badge">${esc(a.source)}</span></div></div></div><div class="toolbar"><button class="alt" onclick="focusAd(${a.id})">Karte</button><button class="alt" onclick="window.open('${esc(a.url)}','_blank')">Kleinanzeigen</button><button class="warn" onclick="delAd(${a.id})">Löschen</button></div></div>`).join('')||'<div class="small">Noch keine Anzeigen.</div>';
- list.forEach(a=>{if(a.lat&&a.lon){let m=L.marker([a.lat,a.lon],{opacity:a.deleted?.45:1}).addTo(map).bindPopup(`<b>${esc(a.title)}</b><br>${esc(a.price_text||'')}<br>${esc(a.place||'')}`);m._aid=a.id;markers.push(m)}});}
-async function sel(id,v){await api('/api/ads/'+id,{method:'PATCH',body:JSON.stringify({selected:v?1:0})});ads.find(a=>a.id==id).selected=v?1:0}
-function selectVisible(){let f=(filter.value||'').toLowerCase();let list=ads.filter(a=>(a.title+' '+a.place+' '+a.price_text).toLowerCase().includes(f));Promise.all(list.map(a=>api('/api/ads/'+a.id,{method:'PATCH',body:JSON.stringify({selected:1})}))).then(loadAll)}
-function focusAd(id){let a=ads.find(x=>x.id==id);if(a&&a.lat)map.setView([a.lat,a.lon],12)}
-async function delAd(id){if(confirm('Anzeige wirklich löschen?')){await api('/api/ads/'+id,{method:'DELETE'});loadAll()}}
-async function importAd(){importmsg.textContent='Importiere…';try{let x=await api('/api/import/ad',{method:'POST',body:JSON.stringify({url:adurl.value})});importmsg.textContent='Importiert.';adurl.value='';await loadAll();focusAd(x.id)}catch(e){importmsg.textContent=e.message+(cfg.api_ready?'':' – für automatischen Import fehlt der KLAZ_API_KEY am Server.')}}</script>
-<script>
-async function manualAd(){await api('/api/ads/manual',{method:'POST',body:JSON.stringify({title:mtitle.value,price_text:mprice.value,place:mplace.value,url:murl.value})});mtitle.value=mprice.value=mplace.value=murl.value='';await loadAll()}
-async function addSearch(){let s=await api('/api/searches',{method:'POST',body:JSON.stringify({url:surl.value,name:sname.value})});surl.value=sname.value='';await loadAll();await syncSearch(s.id)}
-function renderSearches(){searchesEl=document.getElementById('searches');searchesEl.innerHTML=searches.map(s=>`<div class="item"><h3>${esc(s.name)}</h3><div class="meta">${esc(s.query||'')} ${s.location_id?'· Ort-ID '+s.location_id:''} ${s.distance?'· '+s.distance+' km':''}</div><div class="toolbar"><button onclick="syncSearch(${s.id})">Synchronisieren</button><button class="warn" onclick="delSearch(${s.id})">Löschen</button></div></div>`).join('')||'<div class="small">Noch keine gespeicherten Suchen.</div>'}
-async function syncSearch(id){try{let x=await api('/api/searches/'+id+'/sync',{method:'POST',body:JSON.stringify({size:100})});alert(`${x.count} Treffer synchronisiert.`);await loadAll()}catch(e){alert(e.message)}}
-async function delSearch(id){await api('/api/searches/'+id,{method:'DELETE'});loadAll()}
-async function refreshAll(){try{let x=await api('/api/refresh',{method:'POST',body:'{}'});await loadAll();alert(`${x.checked} Anzeigen geprüft.`)}catch(e){alert(e.message)}}
-async function planRoute(){let ids=ads.filter(a=>a.selected&&!a.deleted).map(a=>a.id);try{let x=await api('/api/route',{method:'POST',body:JSON.stringify({start:rstart.value,end:rend.value,ad_ids:ids})});if(routeLayer)map.removeLayer(routeLayer);routeLayer=L.geoJSON(x.geometry).addTo(map);map.fitBounds(routeLayer.getBounds().pad(.1));routebox.classList.remove('hidden');routebox.innerHTML=`<b>${x.distance_km} km · ca. ${x.duration_min} min</b><ol>${x.order.map(o=>`<li>${esc(o.label)}</li>`).join('')}</ol>`}catch(e){alert(e.message)}}
-async function updateSetupStatus(){try{let s=await api('/api/settings');document.getElementById('setupstatus').textContent=`API: ${s.api_ready?'bereit':'noch nicht eingerichtet'} · PIN: ${s.pin_set?'gesetzt':'aus'}`;cfg.api_ready=s.api_ready}catch(e){}}
-async function saveSettings(){try{let body={};if(apikey.value.trim())body.klaz_api_key=apikey.value.trim();if(newpin.value.trim())body.app_pin=newpin.value.trim();let s=await api('/api/settings',{method:'POST',body:JSON.stringify(body)});apikey.value=newpin.value='';cfg.api_ready=s.api_ready;updateSetupStatus();alert('Einstellungen gespeichert.')}catch(e){alert(e.message)}}
-if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');boot();
-</script></body></html>
+
+let ads = [];
+let searches = [];
+let markers = [];
+let routeLayer = null;
+let cfg = {};
+
+
+const map = L.map('map').setView(
+    [51.1, 10.2],
+    6
+);
+
+
+L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+    }
+).addTo(map);
+
+
+async function api(url, opt = {}) {
+
+    let r = await fetch(
+        url,
+        {
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            ...opt
+        }
+    );
+
+    let j = await r.json().catch(
+        () => ({})
+    );
+
+    if (
+        r.status === 401 &&
+        j.error === 'PIN_REQUIRED'
+    ) {
+
+        document
+            .getElementById('login')
+            .classList
+            .remove('hidden');
+
+        throw new Error('PIN');
+    }
+
+    if (!r.ok) {
+        throw new Error(
+            j.error || 'Fehler'
+        );
+    }
+
+    return j;
+}
+
+
+async function boot() {
+
+    cfg = await fetch(
+        '/api/config'
+    ).then(
+        r => r.json()
+    );
+
+    if (cfg.needs_pin) {
+
+        document
+            .getElementById('login')
+            .classList
+            .remove('hidden');
+
+        return;
+    }
+
+    await loadAll();
+
+    updateSetupStatus();
+}
+
+
+async function login() {
+
+    try {
+
+        await api(
+            '/api/login',
+            {
+                method: 'POST',
+                body: JSON.stringify({
+                    pin: pin.value
+                })
+            }
+        );
+
+        document
+            .getElementById('login')
+            .classList
+            .add('hidden');
+
+        loadAll();
+
+    }
+    catch (e) {
+
+        alert(e.message);
+    }
+}
+
+
+async function loadAll() {
+
+    ads = await api(
+        '/api/ads'
+    );
+
+    searches = await api(
+        '/api/searches'
+    );
+
+    renderAds();
+    renderSearches();
+    updateSetupStatus();
+}
+
+
+document
+    .querySelectorAll('.tab')
+    .forEach(
+        b => b.onclick = () => {
+
+            document
+                .querySelectorAll('.tab')
+                .forEach(
+                    x => x.classList.remove('active')
+                );
+
+            b.classList.add('active');
+
+            document
+                .querySelectorAll('.pane')
+                .forEach(
+                    x => x.classList.add('hidden')
+                );
+
+            document
+                .getElementById(b.dataset.tab)
+                .classList
+                .remove('hidden');
+
+            setTimeout(
+                () => map.invalidateSize(),
+                100
+            );
+        }
+    );
+
+
+function esc(s = '') {
+
+    return String(s).replace(
+        /[&<>"']/g,
+        m => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[m])
+    );
+}
+
+
+/*
+    WICHTIG:
+    Wenn aus der Kleinanzeigen-App der komplette
+    Teilen-Text eingefügt wird, holen wir nur
+    die URL heraus.
+*/
+
+function extractKleinanzeigenUrl(text = '') {
+
+    const str = String(text).trim();
+
+    const match = str.match(
+        /https?:\/\/(?:www\.)?kleinanzeigen\.de\/[^\s]+/i
+    );
+
+    if (!match) {
+        return str;
+    }
+
+    return match[0].replace(
+        /[.,;!?)\]}"]+$/g,
+        ''
+    );
+}
+
+
+/*
+    Fahrzeuge erkennen.
+
+    Kategorie 216 bei Kleinanzeigen = Autos.
+    Zusätzlich einige typische Fahrzeugbegriffe.
+*/
+
+function isVehicle(a) {
+
+    const url = a.url || '';
+    const title = a.title || '';
+
+    if (
+        /-216-\d+(?:[/?]|$)/.test(url)
+    ) {
+        return true;
+    }
+
+    return /\b(
+        auto|
+        pkw|
+        fahrzeug|
+        dacia|
+        spring|
+        vw|
+        volkswagen|
+        audi|
+        bmw|
+        mercedes|
+        fiat|
+        kia|
+        skoda|
+        seat|
+        renault|
+        peugeot|
+        citroen|
+        opel|
+        ford|
+        toyota|
+        hyundai|
+        honda|
+        mazda|
+        nissan|
+        tesla|
+        volvo|
+        porsche
+    )\b/ix.test(title);
+}
+
+
+/*
+    Eigene Marker:
+    Fahrzeuge rot,
+    alles andere blau.
+*/
+
+function pinIcon(vehicle) {
+
+    return L.divIcon({
+        className: '',
+        html:
+            `<div class="map-pin ${vehicle ? 'red' : 'blue'}">` +
+            `<span></span>` +
+            `</div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 24],
+        popupAnchor: [0, -24]
+    });
+}
+
+
+function renderAds() {
+
+    markers.forEach(
+        m => map.removeLayer(m)
+    );
+
+    markers = [];
+
+    let f = (
+        filter.value || ''
+    ).toLowerCase();
+
+    let list = ads.filter(
+        a =>
+            (
+                (a.title || '') +
+                ' ' +
+                (a.place || '') +
+                ' ' +
+                (a.price_text || '')
+            )
+            .toLowerCase()
+            .includes(f)
+    );
+
+    count.textContent =
+        `${list.length} Anzeigen`;
+
+
+    adlist.innerHTML =
+        list.map(
+            a => `
+
+            <div class="item ${a.deleted ? 'inactive' : ''}">
+
+                <div class="row">
+
+                    <label style="flex:0">
+
+                        <input
+                            type="checkbox"
+                            ${a.selected ? 'checked' : ''}
+                            onchange="sel(${a.id},this.checked)"
+                            style="width:auto"
+                        >
+
+                    </label>
+
+                    <div>
+
+                        <h3>
+                            ${esc(a.title)}
+                        </h3>
+
+                        <div class="meta">
+
+                            <span class="price">
+                                ${esc(a.price_text || '')}
+                            </span>
+
+                            · ${esc(a.place || 'Ort unbekannt')}
+
+                            ·
+
+                            <span class="badge">
+                                ${esc(a.source)}
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="toolbar">
+
+                    <button
+                        class="alt"
+                        onclick="focusAd(${a.id})"
+                    >
+                        Karte
+                    </button>
+
+                    <button
+                        class="alt"
+                        onclick="window.open('${esc(a.url)}','_blank')"
+                    >
+                        Kleinanzeigen
+                    </button>
+
+                    <button
+                        class="warn"
+                        onclick="delAd(${a.id})"
+                    >
+                        Löschen
+                    </button>
+
+                </div>
+
+            </div>
+
+            `
+        ).join('')
+        ||
+        '<div class="small">Noch keine Anzeigen.</div>';
+
+
+    list.forEach(
+        a => {
+
+            if (
+                a.lat &&
+                a.lon
+            ) {
+
+                let marker = L.marker(
+                    [
+                        a.lat,
+                        a.lon
+                    ],
+                    {
+                        opacity:
+                            a.deleted
+                                ? .45
+                                : 1,
+
+                        icon:
+                            pinIcon(
+                                isVehicle(a)
+                            )
+                    }
+                )
+                .addTo(map)
+                .bindPopup(
+                    `<b>${esc(a.title)}</b>` +
+                    `<br>${esc(a.price_text || '')}` +
+                    `<br>${esc(a.place || '')}`
+                );
+
+                marker._aid = a.id;
+
+                markers.push(
+                    marker
+                );
+            }
+        }
+    );
+}
+
+
+async function sel(id, v) {
+
+    await api(
+        '/api/ads/' + id,
+        {
+            method: 'PATCH',
+            body: JSON.stringify({
+                selected: v ? 1 : 0
+            })
+        }
+    );
+
+    let a = ads.find(
+        x => x.id === id
+    );
+
+    if (a) {
+        a.selected = v ? 1 : 0;
+    }
+}
+
+
+function selectVisible() {
+
+    let f = (
+        filter.value || ''
+    ).toLowerCase();
+
+    let list = ads.filter(
+        a =>
+            (
+                (a.title || '') +
+                ' ' +
+                (a.place || '') +
+                ' ' +
+                (a.price_text || '')
+            )
+            .toLowerCase()
+            .includes(f)
+    );
+
+    Promise
+        .all(
+            list.map(
+                a => api(
+                    '/api/ads/' + a.id,
+                    {
+                        method: 'PATCH',
+                        body: JSON.stringify({
+                            selected: 1
+                        })
+                    }
+                )
+            )
+        )
+        .then(
+            loadAll
+        );
+}
+
+
+function focusAd(id) {
+
+    let a = ads.find(
+        x => x.id === id
+    );
+
+    if (
+        a &&
+        a.lat &&
+        a.lon
+    ) {
+
+        map.setView(
+            [
+                a.lat,
+                a.lon
+            ],
+            12
+        );
+    }
+}
+
+
+async function delAd(id) {
+
+    if (
+        confirm(
+            'Anzeige wirklich löschen?'
+        )
+    ) {
+
+        await api(
+            '/api/ads/' + id,
+            {
+                method: 'DELETE'
+            }
+        );
+
+        loadAll();
+    }
+}
+
+
+async function importAd() {
+
+    importmsg.textContent =
+        'Importiere…';
+
+    try {
+
+        let url =
+            extractKleinanzeigenUrl(
+                adurl.value
+            );
+
+        if (
+            !url ||
+            !/^https?:\/\//i.test(url)
+        ) {
+
+            throw new Error(
+                'Kein Kleinanzeigen-Link gefunden.'
+            );
+        }
+
+        let x = await api(
+            '/api/import/ad',
+            {
+                method: 'POST',
+                body: JSON.stringify({
+                    url: url
+                })
+            }
+        );
+
+        importmsg.textContent =
+            'Importiert.';
+
+        adurl.value = '';
+
+        await loadAll();
+
+        focusAd(
+            x.id
+        );
+
+    }
+    catch (e) {
+
+        importmsg.textContent =
+            e.message;
+    }
+}
+
+
+async function manualAd() {
+
+    await api(
+        '/api/ads/manual',
+        {
+            method: 'POST',
+            body: JSON.stringify({
+                title:
+                    mtitle.value,
+
+                price_text:
+                    mprice.value,
+
+                place:
+                    mplace.value,
+
+                url:
+                    extractKleinanzeigenUrl(
+                        murl.value
+                    )
+            })
+        }
+    );
+
+    mtitle.value = '';
+    mprice.value = '';
+    mplace.value = '';
+    murl.value = '';
+
+    await loadAll();
+}
+
+
+async function addSearch() {
+
+    let s = await api(
+        '/api/searches',
+        {
+            method: 'POST',
+            body: JSON.stringify({
+                url:
+                    extractKleinanzeigenUrl(
+                        surl.value
+                    ),
+
+                name:
+                    sname.value
+            })
+        }
+    );
+
+    surl.value = '';
+    sname.value = '';
+
+    await loadAll();
+
+    await syncSearch(
+        s.id
+    );
+}
+
+
+function renderSearches() {
+
+    const searchesEl =
+        document.getElementById(
+            'searches'
+        );
+
+    searchesEl.innerHTML =
+        searches.map(
+            s => `
+
+            <div class="item">
+
+                <h3>
+                    ${esc(s.name)}
+                </h3>
+
+                <div class="meta">
+
+                    ${esc(s.query || '')}
+
+                    ${
+                        s.location_id
+                            ? ' · Ort-ID ' + esc(s.location_id)
+                            : ''
+                    }
+
+                    ${
+                        s.distance
+                            ? ' · ' + esc(s.distance) + ' km'
+                            : ''
+                    }
+
+                </div>
+
+                <div class="toolbar">
+
+                    <button
+                        onclick="syncSearch(${s.id})"
+                    >
+                        Synchronisieren
+                    </button>
+
+                    <button
+                        class="warn"
+                        onclick="delSearch(${s.id})"
+                    >
+                        Löschen
+                    </button>
+
+                </div>
+
+            </div>
+
+            `
+        ).join('')
+        ||
+        '<div class="small">Noch keine gespeicherten Suchen.</div>';
+}
+
+
+async function syncSearch(id) {
+
+    try {
+
+        let x = await api(
+            '/api/searches/' +
+            id +
+            '/sync',
+            {
+                method: 'POST',
+                body: JSON.stringify({
+                    size: 20
+                })
+            }
+        );
+
+        alert(
+            `${x.count} Treffer synchronisiert.`
+        );
+
+        await loadAll();
+
+    }
+    catch (e) {
+
+        alert(
+            e.message
+        );
+    }
+}
+
+
+async function delSearch(id) {
+
+    await api(
+        '/api/searches/' + id,
+        {
+            method: 'DELETE'
+        }
+    );
+
+    loadAll();
+}
+
+
+async function refreshAll() {
+
+    try {
+
+        let x = await api(
+            '/api/refresh',
+            {
+                method: 'POST',
+                body: '{}'
+            }
+        );
+
+        await loadAll();
+
+        let text =
+            `${x.checked} Anzeigen geprüft.`;
+
+        if (x.removed) {
+
+            text +=
+                ` ${x.removed} nicht mehr verfügbar.`;
+        }
+
+        alert(
+            text
+        );
+
+    }
+    catch (e) {
+
+        alert(
+            e.message
+        );
+    }
+}
+
+
+async function planRoute() {
+
+    let ids = ads
+        .filter(
+            a =>
+                a.selected &&
+                !a.deleted
+        )
+        .map(
+            a => a.id
+        );
+
+    try {
+
+        let x = await api(
+            '/api/route',
+            {
+                method: 'POST',
+                body: JSON.stringify({
+                    start:
+                        rstart.value,
+
+                    end:
+                        rend.value,
+
+                    ad_ids:
+                        ids
+                })
+            }
+        );
+
+        if (routeLayer) {
+
+            map.removeLayer(
+                routeLayer
+            );
+        }
+
+        routeLayer =
+            L.geoJSON(
+                x.geometry
+            ).addTo(map);
+
+        map.fitBounds(
+            routeLayer
+                .getBounds()
+                .pad(.1)
+        );
+
+        routebox
+            .classList
+            .remove('hidden');
+
+        routebox.innerHTML =
+            `<b>` +
+            `${x.distance_km} km · ` +
+            `ca. ${x.duration_min} min` +
+            `</b>` +
+            `<ol>` +
+            x.order.map(
+                o =>
+                    `<li>${esc(o.label)}</li>`
+            ).join('') +
+            `</ol>`;
+
+    }
+    catch (e) {
+
+        alert(
+            e.message
+        );
+    }
+}
+
+
+async function updateSetupStatus() {
+
+    try {
+
+        let s = await api(
+            '/api/settings'
+        );
+
+        document
+            .getElementById(
+                'setupstatus'
+            )
+            .textContent =
+                `Direktabruf: ${
+                    s.direct_fetch
+                        ? 'an'
+                        : 'aus'
+                } · API-Fallback: ${
+                    s.api_fallback
+                        ? 'an'
+                        : 'aus'
+                } · PIN: ${
+                    s.pin_set
+                        ? 'gesetzt'
+                        : 'aus'
+                }`;
+
+        cfg.api_ready =
+            s.api_ready;
+
+    }
+    catch (e) {}
+}
+
+
+async function saveSettings() {
+
+    try {
+
+        let body = {};
+
+        if (
+            apikey.value.trim()
+        ) {
+
+            body.klaz_api_key =
+                apikey.value.trim();
+        }
+
+        if (
+            newpin.value.trim()
+        ) {
+
+            body.app_pin =
+                newpin.value.trim();
+        }
+
+        let s = await api(
+            '/api/settings',
+            {
+                method: 'POST',
+                body:
+                    JSON.stringify(
+                        body
+                    )
+            }
+        );
+
+        apikey.value = '';
+        newpin.value = '';
+
+        cfg.api_ready =
+            s.api_ready;
+
+        updateSetupStatus();
+
+        alert(
+            'Einstellungen gespeichert.'
+        );
+
+    }
+    catch (e) {
+
+        alert(
+            e.message
+        );
+    }
+}
+
+
+if (
+    'serviceWorker'
+    in navigator
+) {
+
+    navigator
+        .serviceWorker
+        .register(
+            '/sw.js'
+        );
+}
+
+
+boot();
+
+</script>
+
+</body>
+</html>
