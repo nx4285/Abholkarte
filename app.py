@@ -1,765 +1,1116 @@
-import os, re, json, time, sqlite3, math, threading
+import os
+import re
+import json
+import time
+import sqlite3
+import threading
 
 from datetime import datetime, timezone
-
 from functools import wraps
-
 from urllib.parse import urlparse, unquote
 
 import requests
-
 from bs4 import BeautifulSoup
-
 from flask import Flask, jsonify, request, session, send_from_directory
-
 from werkzeug.security import generate_password_hash, check_password_hash
+
+
+# ------------------------------------------------------------
+# GRUNDEINSTELLUNGEN
+# ------------------------------------------------------------
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DATA_DIR = os.getenv('DATA_DIR', '/tmp/abholkarte')
-
+# Belmo erlaubt Schreiben nicht unter /app.
+# Deshalb standardmäßig /tmp verwenden.
+# Über DATA_DIR kann später ein persistenter Speicherpfad gesetzt werden.
+DATA_DIR = os.getenv("DATA_DIR", "/tmp/abholkarte")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-DB_PATH = os.path.join(DATA_DIR, 'abholkarte.db')
+DB_PATH = os.path.join(DATA_DIR, "abholkarte.db")
 
 app = Flask(__name__)
 
 app.secret_key = os.getenv(
-
-    'FLASK_SECRET_KEY',
-
-    'abholkarte-local-secret-change-me'
-
+    "FLASK_SECRET_KEY",
+    "abholkarte-local-secret-change-me"
 )
 
-KLAZ_API = 'https://api.kleinanzeigen-agent.de/api/v2/kleinanzeigen'
+KLAZ_API = "https://api.kleinanzeigen-agent.de/api/v2/kleinanzeigen"
+OSRM = "https://router.project-osrm.org"
+NOMINATIM = "https://nominatim.openstreetmap.org"
 
-OSRM = 'https://router.project-osrm.org'
-
-NOMINATIM = 'https://nominatim.openstreetmap.org'
-
-UA = 'Abholkarte/1.0 personal route-planning app'
+UA = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+    "Version/18.0 Mobile/15E148 Safari/604.1"
+)
 
 _geo_lock = threading.Lock()
-
 _last_geo = 0.0
 
+
+# ------------------------------------------------------------
+# HILFSFUNKTIONEN
+# ------------------------------------------------------------
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def truthy(v):
+    return str(v).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on"
+    )
+
+
+def direct_fetch_enabled():
+    return truthy(
+        os.getenv(
+            "ENABLE_DIRECT_FETCH",
+            "true"
+        )
+    )
+
+
+def api_fallback_enabled():
+    return truthy(
+        os.getenv(
+            "USE_API_FALLBACK",
+            "false"
+        )
+    )
+
+
+def api_key():
+    env = os.getenv(
+        "KLAZ_API_KEY",
+        ""
+    ).strip()
+
+    if env:
+        return env
+
+    return get_setting(
+        "klaz_api_key",
+        ""
+    ).strip()
+
+
 def db():
-
     con = sqlite3.connect(DB_PATH)
-
     con.row_factory = sqlite3.Row
-
     return con
 
+
 def init_db():
-
     con = db()
-
     c = con.cursor()
 
-    c.executescript('''
+    c.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS ads(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ad_id TEXT UNIQUE,
+            url TEXT NOT NULL,
+            title TEXT,
+            price_text TEXT,
+            price_amount REAL,
+            place TEXT,
+            lat REAL,
+            lon REAL,
+            source TEXT DEFAULT 'manual',
+            source_ref TEXT,
+            status TEXT DEFAULT 'ACTIVE',
+            deleted INTEGER DEFAULT 0,
+            image_url TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            last_checked TEXT,
+            note TEXT DEFAULT '',
+            selected INTEGER DEFAULT 0
+        );
 
-    CREATE TABLE IF NOT EXISTS ads(
+        CREATE TABLE IF NOT EXISTS searches(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            url TEXT,
+            query TEXT,
+            category_id TEXT,
+            location_id TEXT,
+            distance INTEGER,
+            min_price INTEGER,
+            max_price INTEGER,
+            enabled INTEGER DEFAULT 1,
+            last_sync TEXT,
+            created_at TEXT
+        );
 
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS geocache(
+            query TEXT PRIMARY KEY,
+            lat REAL,
+            lon REAL,
+            display TEXT,
+            ts TEXT
+        );
 
-      ad_id TEXT UNIQUE,
-
-      url TEXT NOT NULL,
-
-      title TEXT,
-
-      price_text TEXT,
-
-      price_amount REAL,
-
-      place TEXT,
-
-      lat REAL,
-
-      lon REAL,
-
-      source TEXT DEFAULT 'manual',
-
-      source_ref TEXT,
-
-      status TEXT DEFAULT 'ACTIVE',
-
-      deleted INTEGER DEFAULT 0,
-
-      image_url TEXT,
-
-      created_at TEXT,
-
-      updated_at TEXT,
-
-      last_checked TEXT,
-
-      note TEXT DEFAULT '',
-
-      selected INTEGER DEFAULT 0
-
-    );
-
-    CREATE TABLE IF NOT EXISTS searches(
-
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-      name TEXT,
-
-      url TEXT,
-
-      query TEXT,
-
-      category_id TEXT,
-
-      location_id TEXT,
-
-      distance INTEGER,
-
-      min_price INTEGER,
-
-      max_price INTEGER,
-
-      enabled INTEGER DEFAULT 1,
-
-      last_sync TEXT,
-
-      created_at TEXT
-
-    );
-
-    CREATE TABLE IF NOT EXISTS geocache(
-
-      query TEXT PRIMARY KEY,
-
-      lat REAL,
-
-      lon REAL,
-
-      display TEXT,
-
-      ts TEXT
-
-    );
-
-    CREATE TABLE IF NOT EXISTS settings(
-
-      key TEXT PRIMARY KEY,
-
-      value TEXT
-
-    );
-
-    ''')
+        CREATE TABLE IF NOT EXISTS settings(
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+        """
+    )
 
     con.commit()
-
     con.close()
+
 
 init_db()
 
-def get_setting(key, default=''):
 
+def get_setting(key, default=""):
     con = db()
 
     row = con.execute(
-
-        'SELECT value FROM settings WHERE key=?',
-
+        "SELECT value FROM settings WHERE key=?",
         (key,)
-
     ).fetchone()
 
     con.close()
 
-    return row['value'] if row else default
+    return row["value"] if row else default
+
 
 def set_setting(key, value):
+    con = db()
+
+    con.execute(
+        """
+        INSERT OR REPLACE INTO settings(key,value)
+        VALUES(?,?)
+        """,
+        (key, value)
+    )
+
+    con.commit()
+    con.close()
+
+
+def configured_pin_hash():
+    env = os.getenv(
+        "APP_PIN",
+        ""
+    ).strip()
+
+    if env:
+        return generate_password_hash(env)
+
+    return get_setting(
+        "app_pin_hash",
+        ""
+    )
+
+
+def auth_required(fn):
+    @wraps(fn)
+    def wrap(*args, **kwargs):
+
+        pin_hash = configured_pin_hash()
+
+        if (
+            not pin_hash
+            or session.get("ok")
+        ):
+            return fn(
+                *args,
+                **kwargs
+            )
+
+        return jsonify(
+            {
+                "error":
+                    "PIN_REQUIRED"
+            }
+        ), 401
+
+    return wrap
+
+
+# ------------------------------------------------------------
+# KLEINANZEIGEN URL
+# ------------------------------------------------------------
+
+def extract_ad_id(url):
+
+    if not url:
+        return None
+
+    m = re.search(
+        r"/([0-9]{8,})-[0-9]+-[0-9]+(?:[/?]|$)",
+        url
+    )
+
+    if not m:
+        m = re.search(
+            r"/([0-9]{8,})(?:[/?]|$)",
+            url
+        )
+
+    return (
+        m.group(1)
+        if m
+        else None
+    )
+
+
+def clean_url(url):
+
+    url = (
+        url
+        or ""
+    ).strip()
+
+    if not url:
+        return ""
+
+    p = urlparse(url)
+
+    scheme = (
+        p.scheme
+        or "https"
+    )
+
+    host = (
+        p.netloc
+        or "www.kleinanzeigen.de"
+    )
+
+    return (
+        f"{scheme}://"
+        f"{host}"
+        f"{p.path}"
+    )
+
+
+# ------------------------------------------------------------
+# GEO-CODING
+# ------------------------------------------------------------
+
+def geocode(q):
+
+    global _last_geo
+
+    q = (
+        q
+        or ""
+    ).strip()
+
+    if not q:
+        return None
+
+    con = db()
+
+    row = con.execute(
+        """
+        SELECT *
+        FROM geocache
+        WHERE query=?
+        """,
+        (
+            q.lower(),
+        )
+    ).fetchone()
+
+    con.close()
+
+    if row:
+        return {
+            "lat":
+                row["lat"],
+            "lon":
+                row["lon"],
+            "display":
+                row["display"]
+        }
+
+    with _geo_lock:
+
+        wait = max(
+            0,
+            1.05 - (
+                time.time()
+                - _last_geo
+            )
+        )
+
+        if wait:
+            time.sleep(wait)
+
+        r = requests.get(
+            NOMINATIM + "/search",
+            params={
+                "q":
+                    q,
+                "format":
+                    "jsonv2",
+                "limit":
+                    1,
+                "countrycodes":
+                    "de"
+            },
+            headers={
+                "User-Agent":
+                    "Abholkarte/1.0"
+            },
+            timeout=20
+        )
+
+        _last_geo = time.time()
+
+    if (
+        not r.ok
+        or not r.json()
+    ):
+        return None
+
+    x = r.json()[0]
+
+    out = {
+        "lat":
+            float(x["lat"]),
+        "lon":
+            float(x["lon"]),
+        "display":
+            x.get(
+                "display_name",
+                q
+            )
+    }
 
     con = db()
 
     con.execute(
-
-        'INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)',
-
-        (key, value)
-
+        """
+        INSERT OR REPLACE INTO geocache
+        VALUES(?,?,?,?,?)
+        """,
+        (
+            q.lower(),
+            out["lat"],
+            out["lon"],
+            out["display"],
+            now()
+        )
     )
 
     con.commit()
-
     con.close()
 
-def configured_pin_hash():
+    return out
 
-    env = os.getenv('APP_PIN', '').strip()
 
-    if env:
-
-        return generate_password_hash(env)
-
-    return get_setting('app_pin_hash', '')
-
-def api_key():
-
-    return (
-
-        os.getenv('KLAZ_API_KEY', '').strip()
-
-        or get_setting('klaz_api_key', '').strip()
-
-    )
-
-def now():
-
-    return datetime.now(timezone.utc).isoformat()
-
-def truthy(v):
-
-    return str(v).lower() in (
-
-        '1',
-
-        'true',
-
-        'yes',
-
-        'on'
-
-    )
-
-def auth_required(fn):
-
-    @wraps(fn)
-
-    def wrap(*a, **kw):
-
-        pin_hash = configured_pin_hash()
-
-        if not pin_hash or session.get('ok'):
-
-            return fn(*a, **kw)
-
-        return jsonify({
-
-            'error': 'PIN_REQUIRED'
-
-        }), 401
-
-    return wrap
+# ------------------------------------------------------------
+# API-DIENST
+# NUR OPTIONAL
+# ------------------------------------------------------------
 
 def klaz_get(path, params=None):
 
     key = api_key()
 
     if not key:
-
-        raise RuntimeError('KLAZ_API_KEY_MISSING')
+        raise RuntimeError(
+            "KLAZ_API_KEY_MISSING"
+        )
 
     r = requests.get(
-
         KLAZ_API + path,
-
-        params=params or {},
-
+        params=(
+            params
+            or {}
+        ),
         headers={
-
-            'klaz_key': key,
-
-            'User-Agent': UA
-
+            "klaz_key":
+                key,
+            "User-Agent":
+                UA
         },
-
         timeout=25
-
     )
 
     if r.status_code >= 400:
 
         try:
+            j = r.json()
 
             msg = (
-
-                r.json().get('error_code')
-
-                or r.json().get('message')
-
+                j.get("error_code")
+                or j.get("message")
+                or f"HTTP_{r.status_code}"
             )
 
         except Exception:
-
-            msg = f'HTTP_{r.status_code}'
+            msg = (
+                f"HTTP_{r.status_code}"
+            )
 
         raise RuntimeError(msg)
 
     return r.json()
 
-def extract_ad_id(url):
+
+# ------------------------------------------------------------
+# DIREKTER ABRUF EINER KLEINANZEIGE
+# ------------------------------------------------------------
+
+def request_kleinanzeigen(url):
+
+    return requests.get(
+        url,
+        headers={
+            "User-Agent":
+                UA,
+            "Accept":
+                "text/html,application/xhtml+xml,"
+                "application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language":
+                "de-DE,de;q=0.9,en;q=0.5",
+            "Cache-Control":
+                "no-cache"
+        },
+        timeout=25,
+        allow_redirects=True
+    )
+
+
+def page_is_removed(response, soup):
+
+    if response.status_code in (
+        404,
+        410
+    ):
+        return True
+
+    text = soup.get_text(
+        " ",
+        strip=True
+    ).lower()
+
+    removed_signals = [
+        "anzeige ist nicht mehr verfügbar",
+        "diese anzeige ist nicht mehr verfügbar",
+        "anzeige wurde gelöscht",
+        "diese anzeige wurde gelöscht",
+        "anzeige existiert nicht mehr",
+        "angebot ist nicht mehr verfügbar",
+        "dieses angebot ist nicht mehr verfügbar"
+    ]
+
+    for signal in removed_signals:
+        if signal in text:
+            return True
+
+    return False
+
+
+def parse_json_ld(soup):
+
+    found = []
+
+    for script in soup.find_all(
+        "script",
+        attrs={
+            "type":
+                "application/ld+json"
+        }
+    ):
+
+        raw = (
+            script.string
+            or script.get_text()
+            or ""
+        ).strip()
+
+        if not raw:
+            continue
+
+        try:
+            data = json.loads(raw)
+
+            if isinstance(
+                data,
+                list
+            ):
+                found.extend(data)
+
+            else:
+                found.append(data)
+
+        except Exception:
+            continue
+
+    return found
+
+
+def meta_content(soup, *names):
+
+    for name in names:
+
+        tag = soup.find(
+            "meta",
+            attrs={
+                "property":
+                    name
+            }
+        )
+
+        if not tag:
+            tag = soup.find(
+                "meta",
+                attrs={
+                    "name":
+                        name
+                }
+            )
+
+        if (
+            tag
+            and tag.get("content")
+        ):
+            return tag.get(
+                "content"
+            ).strip()
+
+    return ""
+
+
+def clean_title(title):
+
+    title = (
+        title
+        or ""
+    ).strip()
+
+    title = re.sub(
+        r"\s+\|\s+Kleinanzeigen.*$",
+        "",
+        title,
+        flags=re.I
+    )
+
+    return title.strip()
+
+
+def parse_price_amount(text):
+
+    if not text:
+        return None
+
+    cleaned = (
+        str(text)
+        .replace(".", "")
+        .replace(",", ".")
+    )
 
     m = re.search(
-
-        r'/([0-9]{8,})-[0-9]+-[0-9]+(?:[/?]|$)',
-
-        url
-
+        r"([0-9]+(?:\.[0-9]+)?)",
+        cleaned
     )
 
     if not m:
-
-        m = re.search(
-
-            r'/([0-9]{8,})(?:[/?]|$)',
-
-            url
-
-        )
-
-    return m.group(1) if m else None
-
-def clean_url(url):
-
-    p = urlparse(url.strip())
-
-    return (
-
-        f'{p.scheme or "https"}://'
-
-        f'{p.netloc or "www.kleinanzeigen.de"}'
-
-        f'{p.path}'
-
-    )
-
-def geocode(q):
-
-    global _last_geo
-
-    q = (q or '').strip()
-
-    if not q:
-
         return None
 
-    con = db()
-
-    row = con.execute(
-
-        'SELECT * FROM geocache WHERE query=?',
-
-        (q.lower(),)
-
-    ).fetchone()
-
-    con.close()
-
-    if row:
-
-        return {
-
-            'lat': row['lat'],
-
-            'lon': row['lon'],
-
-            'display': row['display']
-
-        }
-
-    with _geo_lock:
-
-        wait = max(
-
-            0,
-
-            1.05 - (time.time() - _last_geo)
-
+    try:
+        return float(
+            m.group(1)
         )
 
-        if wait:
-
-            time.sleep(wait)
-
-        r = requests.get(
-
-            NOMINATIM + '/search',
-
-            params={
-
-                'q': q,
-
-                'format': 'jsonv2',
-
-                'limit': 1,
-
-                'countrycodes': 'de'
-
-            },
-
-            headers={
-
-                'User-Agent': UA
-
-            },
-
-            timeout=20
-
-        )
-
-        _last_geo = time.time()
-
-    if not r.ok or not r.json():
-
+    except Exception:
         return None
 
-    x = r.json()[0]
 
-    out = {
+def parse_direct_ad(url):
 
-        'lat': float(x['lat']),
-
-        'lon': float(x['lon']),
-
-        'display': x.get(
-
-            'display_name',
-
-            q
-
+    if not direct_fetch_enabled():
+        raise RuntimeError(
+            "DIRECT_FETCH_DISABLED"
         )
 
-    }
+    url = clean_url(url)
 
-    con = db()
+    response = request_kleinanzeigen(
+        url
+    )
 
-    con.execute(
-
-        'INSERT OR REPLACE INTO geocache VALUES(?,?,?,?,?)',
-
-        (
-
-            q.lower(),
-
-            out['lat'],
-
-            out['lon'],
-
-            out['display'],
-
-            now()
-
+    if response.status_code in (
+        403,
+        429
+    ):
+        raise RuntimeError(
+            f"KLEINANZEIGEN_BLOCKED_{response.status_code}"
         )
 
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser"
     )
 
-    con.commit()
-
-    con.close()
-
-    return out
-
-def normalize_ad(a, source='api', source_ref=None):
-
-    loc = a.get('location') or {}
-
-    place = (
-
-        loc.get('name')
-
-        or loc.get('city')
-
-        or ''
-
-    )
-
-    price = a.get('price') or {}
-
-    amount = (
-
-        price.get('amount')
-
-        if isinstance(price, dict)
-
-        else None
-
-    )
-
-    ptxt = (
-
-        'VB'
-
-        if (
-
-            isinstance(price, dict)
-
-            and price.get('price_type') == 'NEGOTIABLE'
-
+    if page_is_removed(
+        response,
+        soup
+    ):
+        raise RuntimeError(
+            "AD_NOT_AVAILABLE"
         )
 
-        else ''
+    if response.status_code >= 400:
+        raise RuntimeError(
+            f"KLEINANZEIGEN_HTTP_{response.status_code}"
+        )
 
+    ad_id = extract_ad_id(
+        response.url
+    ) or extract_ad_id(url)
+
+    title = clean_title(
+        meta_content(
+            soup,
+            "og:title",
+            "twitter:title"
+        )
     )
 
-    if amount is not None:
+    description = meta_content(
+        soup,
+        "og:description",
+        "description"
+    )
 
-        ptxt = (
+    image_url = meta_content(
+        soup,
+        "og:image",
+        "twitter:image"
+    )
 
-            f"{amount:,.0f} €".replace(',', '.')
+    price_text = ""
+    price_amount = None
+    place = ""
+    lat = None
+    lon = None
 
-            + (
+    json_ld = parse_json_ld(
+        soup
+    )
 
-                " VB"
+    for obj in json_ld:
 
-                if price.get('negotiable')
+        if not isinstance(
+            obj,
+            dict
+        ):
+            continue
 
-                else ''
+        typ = obj.get(
+            "@type",
+            ""
+        )
 
+        if isinstance(
+            typ,
+            list
+        ):
+            typ = " ".join(
+                typ
             )
 
+        if not title:
+            title = clean_title(
+                obj.get(
+                    "name",
+                    ""
+                )
+            )
+
+        offers = obj.get(
+            "offers"
         )
 
-    images = a.get('images') or []
+        if isinstance(
+            offers,
+            dict
+        ):
 
-    image = ''
+            price = offers.get(
+                "price"
+            )
 
-    if images:
+            currency = offers.get(
+                "priceCurrency",
+                "EUR"
+            )
 
-        image = (
+            if price is not None:
 
-            images[0].get('url')
+                try:
+                    price_amount = float(
+                        str(price)
+                        .replace(",", ".")
+                    )
 
-            if isinstance(images[0], dict)
+                except Exception:
+                    pass
 
-            else str(images[0])
+                symbol = (
+                    "€"
+                    if currency == "EUR"
+                    else currency
+                )
 
+                price_text = (
+                    f"{price} {symbol}"
+                )
+
+        address = obj.get(
+            "address"
         )
 
-    lat = (
+        if isinstance(
+            address,
+            dict
+        ):
 
-        loc.get('latitude')
+            locality = address.get(
+                "addressLocality"
+            )
 
-        or loc.get('lat')
+            postal = address.get(
+                "postalCode"
+            )
 
-    )
+            region = address.get(
+                "addressRegion"
+            )
 
-    lon = (
+            parts = [
+                x
+                for x in (
+                    postal,
+                    locality,
+                    region
+                )
+                if x
+            ]
 
-        loc.get('longitude')
+            if parts:
+                place = " ".join(
+                    parts
+                )
 
-        or loc.get('lon')
+        geo = obj.get(
+            "geo"
+        )
 
-    )
+        if isinstance(
+            geo,
+            dict
+        ):
+
+            try:
+                lat = float(
+                    geo.get("latitude")
+                )
+
+                lon = float(
+                    geo.get("longitude")
+                )
+
+            except Exception:
+                pass
+
+        img = obj.get(
+            "image"
+        )
+
+        if (
+            not image_url
+            and img
+        ):
+
+            if isinstance(
+                img,
+                list
+            ):
+                image_url = str(
+                    img[0]
+                )
+
+            elif isinstance(
+                img,
+                dict
+            ):
+                image_url = (
+                    img.get("url")
+                    or ""
+                )
+
+            else:
+                image_url = str(
+                    img
+                )
+
+    if not title:
+
+        h1 = soup.find("h1")
+
+        if h1:
+            title = h1.get_text(
+                " ",
+                strip=True
+            )
+
+    if not title:
+        title = "Kleinanzeige"
+
+    if not price_text:
+
+        price_selectors = [
+            "#viewad-price",
+            ".boxedarticle--price",
+            "[class*=price]",
+            "[data-testid*=price]"
+        ]
+
+        for selector in price_selectors:
+
+            tag = soup.select_one(
+                selector
+            )
+
+            if tag:
+
+                txt = tag.get_text(
+                    " ",
+                    strip=True
+                )
+
+                if "€" in txt:
+                    price_text = txt
+                    break
 
     if (
+        price_text
+        and price_amount is None
+    ):
+        price_amount = parse_price_amount(
+            price_text
+        )
 
+    if not place:
+
+        place_selectors = [
+            "#viewad-locality",
+            ".boxedarticle--details",
+            "[class*=location]",
+            "[data-testid*=location]"
+        ]
+
+        for selector in place_selectors:
+
+            tag = soup.select_one(
+                selector
+            )
+
+            if tag:
+
+                txt = tag.get_text(
+                    " ",
+                    strip=True
+                )
+
+                if txt:
+                    place = txt
+                    break
+
+    if (
         (lat is None or lon is None)
-
         and place
-
     ):
 
-        g = geocode(place)
+        g = geocode(
+            place
+        )
 
         if g:
-
-            lat = g['lat']
-
-            lon = g['lon']
+            lat = g["lat"]
+            lon = g["lon"]
 
     return {
-
-        'ad_id': str(
-
-            a.get('ad_id') or ''
-
-        ),
-
-        'url': a.get('ad_url') or '',
-
-        'title': a.get('title') or 'Kleinanzeige',
-
-        'price_text': ptxt,
-
-        'price_amount': amount,
-
-        'place': place,
-
-        'lat': lat,
-
-        'lon': lon,
-
-        'source': source,
-
-        'source_ref': source_ref,
-
-        'status': a.get('status') or 'ACTIVE',
-
-        'deleted': (
-
-            1
-
-            if a.get('deleted')
-
-            else 0
-
-        ),
-
-        'image_url': image,
-
-        'created_at': (
-
-            a.get('created_at')
-
-            or now()
-
-        ),
-
-        'updated_at': now(),
-
-        'last_checked': now()
-
+        "ad_id":
+            ad_id
+            or "",
+        "url":
+            clean_url(
+                response.url
+            ),
+        "title":
+            title,
+        "price_text":
+            price_text,
+        "price_amount":
+            price_amount,
+        "place":
+            place,
+        "lat":
+            lat,
+        "lon":
+            lon,
+        "source":
+            "direct",
+        "source_ref":
+            None,
+        "status":
+            "ACTIVE",
+        "deleted":
+            0,
+        "image_url":
+            image_url,
+        "created_at":
+            now(),
+        "updated_at":
+            now(),
+        "last_checked":
+            now(),
+        "description":
+            description
     }
+
+
+# ------------------------------------------------------------
+# ANZEIGEN-DATENBANK
+# ------------------------------------------------------------
 
 def upsert_ad(x):
 
     if (
-
-        not x.get('url')
-
-        and x.get('ad_id')
-
+        not x.get("url")
+        and x.get("ad_id")
     ):
-
-        x['url'] = (
-
-            f'https://www.kleinanzeigen.de/'
-
-            f's-{x["ad_id"]}'
-
+        x["url"] = (
+            "https://www.kleinanzeigen.de/"
+            f"s-{x['ad_id']}"
         )
 
     con = db()
-
     c = con.cursor()
 
-    if x.get('ad_id'):
+    row = None
+
+    if x.get("ad_id"):
 
         row = c.execute(
-
-            'SELECT id FROM ads WHERE ad_id=?',
-
-            (x['ad_id'],)
-
+            """
+            SELECT id
+            FROM ads
+            WHERE ad_id=?
+            """,
+            (
+                x["ad_id"],
+            )
         ).fetchone()
 
-    else:
+    if (
+        not row
+        and x.get("url")
+    ):
 
         row = c.execute(
-
-            'SELECT id FROM ads WHERE url=?',
-
-            (x.get('url', ''),)
-
+            """
+            SELECT id
+            FROM ads
+            WHERE url=?
+            """,
+            (
+                x["url"],
+            )
         ).fetchone()
 
     fields = [
-
-        'ad_id',
-
-        'url',
-
-        'title',
-
-        'price_text',
-
-        'price_amount',
-
-        'place',
-
-        'lat',
-
-        'lon',
-
-        'source',
-
-        'source_ref',
-
-        'status',
-
-        'deleted',
-
-        'image_url',
-
-        'created_at',
-
-        'updated_at',
-
-        'last_checked'
-
+        "ad_id",
+        "url",
+        "title",
+        "price_text",
+        "price_amount",
+        "place",
+        "lat",
+        "lon",
+        "source",
+        "source_ref",
+        "status",
+        "deleted",
+        "image_url",
+        "created_at",
+        "updated_at",
+        "last_checked"
     ]
 
     if row:
 
-        sets = ','.join(
-
-            f'{f}=?'
-
+        update_fields = [
+            f
             for f in fields
-
             if x.get(f) is not None
+        ]
 
+        sets = ",".join(
+            f"{f}=?"
+            for f in update_fields
         )
 
         vals = [
-
             x.get(f)
+            for f in update_fields
+        ]
 
-            for f in fields
-
-            if x.get(f) is not None
-
-        ] + [row['id']]
-
-        c.execute(
-
-            f'UPDATE ads SET {sets} WHERE id=?',
-
-            vals
-
+        vals.append(
+            row["id"]
         )
 
-        rid = row['id']
+        c.execute(
+            f"""
+            UPDATE ads
+            SET {sets}
+            WHERE id=?
+            """,
+            vals
+        )
+
+        rid = row["id"]
 
     else:
 
         vals = [
-
             x.get(f)
-
             for f in fields
-
         ]
 
+        marks = ",".join(
+            "?"
+            for _ in fields
+        )
+
         c.execute(
-
-            f'''
-
+            f"""
             INSERT INTO ads(
-
                 {",".join(fields)}
-
             )
-
             VALUES(
-
-                {",".join("?" for _ in fields)}
-
+                {marks}
             )
-
-            ''',
-
+            """,
             vals
-
         )
 
         rid = c.lastrowid
@@ -767,917 +1118,1063 @@ def upsert_ad(x):
     con.commit()
 
     out = dict(
-
         c.execute(
-
-            'SELECT * FROM ads WHERE id=?',
-
-            (rid,)
-
+            """
+            SELECT *
+            FROM ads
+            WHERE id=?
+            """,
+            (
+                rid,
+            )
         ).fetchone()
-
     )
 
     con.close()
 
     return out
 
+
+# ------------------------------------------------------------
+# API-DATEN NORMALISIEREN
+# ------------------------------------------------------------
+
+def normalize_api_ad(
+    a,
+    source="api",
+    source_ref=None
+):
+
+    loc = (
+        a.get("location")
+        or {}
+    )
+
+    place = (
+        loc.get("name")
+        or loc.get("city")
+        or ""
+    )
+
+    price = (
+        a.get("price")
+        or {}
+    )
+
+    amount = None
+    price_text = ""
+
+    if isinstance(
+        price,
+        dict
+    ):
+
+        amount = price.get(
+            "amount"
+        )
+
+        if amount is not None:
+
+            price_text = (
+                f"{amount:,.0f} €"
+                .replace(",", ".")
+            )
+
+            if price.get(
+                "negotiable"
+            ):
+                price_text += " VB"
+
+    images = (
+        a.get("images")
+        or []
+    )
+
+    image = ""
+
+    if images:
+
+        if isinstance(
+            images[0],
+            dict
+        ):
+            image = (
+                images[0].get("url")
+                or ""
+            )
+
+        else:
+            image = str(
+                images[0]
+            )
+
+    lat = (
+        loc.get("latitude")
+        or loc.get("lat")
+    )
+
+    lon = (
+        loc.get("longitude")
+        or loc.get("lon")
+    )
+
+    if (
+        (lat is None or lon is None)
+        and place
+    ):
+
+        g = geocode(
+            place
+        )
+
+        if g:
+            lat = g["lat"]
+            lon = g["lon"]
+
+    return {
+        "ad_id":
+            str(
+                a.get("ad_id")
+                or ""
+            ),
+        "url":
+            a.get("ad_url")
+            or "",
+        "title":
+            a.get("title")
+            or "Kleinanzeige",
+        "price_text":
+            price_text,
+        "price_amount":
+            amount,
+        "place":
+            place,
+        "lat":
+            lat,
+        "lon":
+            lon,
+        "source":
+            source,
+        "source_ref":
+            source_ref,
+        "status":
+            a.get("status")
+            or "ACTIVE",
+        "deleted":
+            1
+            if a.get("deleted")
+            else 0,
+        "image_url":
+            image,
+        "created_at":
+            a.get("created_at")
+            or now(),
+        "updated_at":
+            now(),
+        "last_checked":
+            now()
+    }
+
+
+# ------------------------------------------------------------
+# SUCHLINK ANALYSIEREN
+# ------------------------------------------------------------
+
 def parse_search_url(url):
 
     p = urlparse(url)
+    path = unquote(
+        p.path
+    )
 
-    path = unquote(p.path)
+    last = (
+        path
+        .rstrip("/")
+        .split("/")[-1]
+    )
 
-    last = path.rstrip('/').split('/')[-1]
-
-    q = ''
+    q = ""
 
     m = re.search(
-
-        r'/s-[^/]+/([^/]+)/k0',
-
+        r"/s-[^/]+/([^/]+)/k0",
         path
-
     )
 
     if m:
-
-        q = m.group(1).replace('-', ' ')
+        q = (
+            m.group(1)
+            .replace("-", " ")
+        )
 
     else:
 
         m = re.search(
-
-            r'/s-([^/]+)/k0',
-
+            r"/s-([^/]+)/k0",
             path
-
         )
 
         if m:
-
-            q = m.group(1).replace('-', ' ')
+            q = (
+                m.group(1)
+                .replace("-", " ")
+            )
 
     cat = (
-
-        re.search(r'c(\d+)', last)
-
-        or re.search(
-
-            r'/c(\d+)(?:/|$)',
-
-            path
-
+        re.search(
+            r"c(\d+)",
+            last
         )
-
+        or re.search(
+            r"/c(\d+)(?:/|$)",
+            path
+        )
     )
 
     loc = re.search(
-
-        r'l(\d+)',
-
+        r"l(\d+)",
         last
-
     )
 
     rad = re.search(
-
-        r'r(\d+)',
-
+        r"r(\d+)",
         last
-
     )
 
     minp = None
-
     maxp = None
 
     pm = re.search(
-
-        r'preis:(\d*):(\d*)',
-
+        r"preis:(\d*):(\d*)",
         path
-
     )
 
     if pm:
 
-        minp = (
+        if pm.group(1):
+            minp = int(
+                pm.group(1)
+            )
 
-            int(pm.group(1))
-
-            if pm.group(1)
-
-            else None
-
-        )
-
-        maxp = (
-
-            int(pm.group(2))
-
-            if pm.group(2)
-
-            else None
-
-        )
+        if pm.group(2):
+            maxp = int(
+                pm.group(2)
+            )
 
     return {
-
-        'query': q,
-
-        'category_id': (
-
+        "query":
+            q,
+        "category_id":
             cat.group(1)
-
             if cat
-
-            else None
-
-        ),
-
-        'location_id': (
-
+            else None,
+        "location_id":
             loc.group(1)
-
             if loc
-
-            else None
-
-        ),
-
-        'distance': (
-
-            int(rad.group(1))
-
+            else None,
+        "distance":
+            int(
+                rad.group(1)
+            )
             if rad
-
-            else None
-
-        ),
-
-        'min_price': minp,
-
-        'max_price': maxp
-
+            else None,
+        "min_price":
+            minp,
+        "max_price":
+            maxp
     }
+
+
+# ------------------------------------------------------------
+# DIREKTE SUCHSEITE
+# ------------------------------------------------------------
 
 def direct_fetch_search(url):
 
-    if not truthy(
-
-        os.getenv(
-
-            'ENABLE_DIRECT_FETCH',
-
-            'false'
-
-        )
-
-    ):
-
+    if not direct_fetch_enabled():
         raise RuntimeError(
-
-            'DIRECT_FETCH_DISABLED'
-
+            "DIRECT_FETCH_DISABLED"
         )
 
-    r = requests.get(
-
-        url,
-
-        headers={
-
-            'User-Agent':
-
-            'Mozilla/5.0 ' + UA
-
-        },
-
-        timeout=25
-
+    response = request_kleinanzeigen(
+        url
     )
 
-    r.raise_for_status()
+    if response.status_code in (
+        403,
+        429
+    ):
+        raise RuntimeError(
+            f"KLEINANZEIGEN_BLOCKED_{response.status_code}"
+        )
+
+    if response.status_code >= 400:
+        raise RuntimeError(
+            f"KLEINANZEIGEN_HTTP_{response.status_code}"
+        )
 
     soup = BeautifulSoup(
-
-        r.text,
-
-        'html.parser'
-
+        response.text,
+        "html.parser"
     )
 
     out = []
 
-    for a in soup.select(
+    articles = soup.select(
+        "article.aditem"
+    )
 
-        'article.aditem'
-
-    ):
+    for a in articles:
 
         link = a.select_one(
-
-            'a.ellipsis, '
-
             'a[href*="/s-anzeige/"]'
-
         )
 
         if not link:
-
             continue
 
         href = link.get(
-
-            'href',
-
-            ''
-
+            "href",
+            ""
         )
 
-        if href.startswith('/'):
-
+        if href.startswith("/"):
             href = (
-
-                'https://www.kleinanzeigen.de'
-
+                "https://www.kleinanzeigen.de"
                 + href
-
             )
 
-        title = (
-
-            a.select_one('.ellipsis')
-
-            or link
-
-        ).get_text(
-
-            ' ',
-
-            strip=True
-
+        href = clean_url(
+            href
         )
 
-        price = (
-
+        title_tag = (
             a.select_one(
-
-                '.aditem-main--middle--'
-
-                'price-shipping--price'
-
+                ".ellipsis"
             )
-
             or a.select_one(
+                "h2"
+            )
+            or link
+        )
 
-                '[class*=price]'
+        title = title_tag.get_text(
+            " ",
+            strip=True
+        )
 
+        price_tag = (
+            a.select_one(
+                ".aditem-main--middle--"
+                "price-shipping--price"
+            )
+            or a.select_one(
+                "[class*=price]"
+            )
+        )
+
+        place_tag = (
+            a.select_one(
+                ".aditem-main--top--left"
+            )
+            or a.select_one(
+                "[class*=location]"
+            )
+        )
+
+        image_tag = a.select_one(
+            "img"
+        )
+
+        image = ""
+
+        if image_tag:
+
+            image = (
+                image_tag.get("src")
+                or image_tag.get(
+                    "data-src"
+                )
+                or ""
             )
 
+        price_text = (
+            price_tag.get_text(
+                " ",
+                strip=True
+            )
+            if price_tag
+            else ""
         )
 
-        loc = a.select_one(
-
-            '.aditem-main--top--left'
-
+        place = (
+            place_tag.get_text(
+                " ",
+                strip=True
+            )
+            if place_tag
+            else ""
         )
 
-        out.append({
+        lat = None
+        lon = None
 
-            'ad_id':
+        if place:
 
-                extract_ad_id(href) or '',
+            g = geocode(
+                place
+            )
 
-            'url':
+            if g:
+                lat = g["lat"]
+                lon = g["lon"]
 
-                clean_url(href),
+        out.append(
+            {
+                "ad_id":
+                    extract_ad_id(
+                        href
+                    )
+                    or "",
+                "url":
+                    href,
+                "title":
+                    title
+                    or "Kleinanzeige",
+                "price_text":
+                    price_text,
+                "price_amount":
+                    parse_price_amount(
+                        price_text
+                    ),
+                "place":
+                    place,
+                "lat":
+                    lat,
+                "lon":
+                    lon,
+                "source":
+                    "search-direct",
+                "source_ref":
+                    None,
+                "status":
+                    "ACTIVE",
+                "deleted":
+                    0,
+                "image_url":
+                    image,
+                "created_at":
+                    now(),
+                "updated_at":
+                    now(),
+                "last_checked":
+                    now()
+            }
+        )
 
-            'title':
-
-                title,
-
-            'price_text':
-
-                price.get_text(
-
-                    ' ',
-
-                    strip=True
-
-                )
-
-                if price
-
-                else '',
-
-            'place':
-
-                loc.get_text(
-
-                    ' ',
-
-                    strip=True
-
-                )
-
-                if loc
-
-                else '',
-
-            'source':
-
-                'search-direct',
-
-            'status':
-
-                'ACTIVE',
-
-            'deleted':
-
-                0,
-
-            'created_at':
-
-                now(),
-
-            'updated_at':
-
-                now(),
-
-            'last_checked':
-
-                now()
-
-        })
+    if not out:
+        raise RuntimeError(
+            "KEINE_ANZEIGEN_AUF_SUCHSEITE_GEFUNDEN"
+        )
 
     return out
 
-@app.get('/')
 
+# ------------------------------------------------------------
+# VERFÜGBARKEIT EINER ANZEIGE PRÜFEN
+# ------------------------------------------------------------
+
+def check_direct_status(url):
+
+    try:
+
+        response = request_kleinanzeigen(
+            url
+        )
+
+    except Exception as e:
+
+        return {
+            "state":
+                "ERROR",
+            "error":
+                str(e)
+        }
+
+    if response.status_code in (
+        403,
+        429
+    ):
+
+        return {
+            "state":
+                "BLOCKED",
+            "code":
+                response.status_code
+        }
+
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser"
+    )
+
+    if page_is_removed(
+        response,
+        soup
+    ):
+
+        return {
+            "state":
+                "REMOVED"
+        }
+
+    if response.status_code >= 400:
+
+        return {
+            "state":
+                "ERROR",
+            "code":
+                response.status_code
+        }
+
+    return {
+        "state":
+            "ACTIVE"
+    }
+
+
+# ------------------------------------------------------------
+# WEBSEITE / DATEIEN
+# ------------------------------------------------------------
+
+@app.get("/")
 def home():
 
     return send_from_directory(
-
-        '.',
-
-        'index.html'
-
+        ".",
+        "index.html"
     )
 
-@app.get('/manifest.webmanifest')
 
+@app.get("/manifest.webmanifest")
 def manifest_file():
 
     return send_from_directory(
-
-        '.',
-
-        'manifest.webmanifest'
-
+        ".",
+        "manifest.webmanifest"
     )
 
-@app.get('/sw.js')
 
+@app.get("/sw.js")
 def service_worker_file():
 
     return send_from_directory(
-
-        '.',
-
-        'sw.js',
-
-        mimetype='application/javascript'
-
+        ".",
+        "sw.js",
+        mimetype="application/javascript"
     )
 
-@app.get('/icon-192.png')
 
+@app.get("/icon-192.png")
 def icon192():
 
     return send_from_directory(
-
-        '.',
-
-        'icon-192.png'
-
+        ".",
+        "icon-192.png"
     )
 
-@app.get('/icon-512.png')
 
+@app.get("/icon-512.png")
 def icon512():
 
     return send_from_directory(
-
-        '.',
-
-        'icon-512.png'
-
+        ".",
+        "icon-512.png"
     )
 
-@app.post('/api/login')
 
+# ------------------------------------------------------------
+# LOGIN
+# ------------------------------------------------------------
+
+@app.post("/api/login")
 def login():
 
     pin_hash = configured_pin_hash()
 
     supplied = str(
-
-        (request.json or {}).get(
-
-            'pin',
-
-            ''
-
+        (
+            request.json
+            or {}
+        ).get(
+            "pin",
+            ""
         )
-
     )
 
     if (
-
         not pin_hash
-
         or check_password_hash(
-
             pin_hash,
-
             supplied
-
         )
-
     ):
 
-        session['ok'] = True
+        session["ok"] = True
 
-        return jsonify({
+        return jsonify(
+            {
+                "ok":
+                    True
+            }
+        )
 
-            'ok': True
+    return jsonify(
+        {
+            "error":
+                "Falsche PIN"
+        }
+    ), 403
 
-        })
 
-    return jsonify({
+# ------------------------------------------------------------
+# KONFIGURATION
+# ------------------------------------------------------------
 
-        'error': 'Falsche PIN'
-
-    }), 403
-
-@app.get('/api/config')
-
+@app.get("/api/config")
 def config():
 
-    return jsonify({
-
-        'needs_pin':
-
-            bool(configured_pin_hash())
-
-            and not session.get('ok'),
-
-        'api_ready':
-
-            bool(api_key()),
-
-        'direct_fetch':
-
-            truthy(
-
-                os.getenv(
-
-                    'ENABLE_DIRECT_FETCH',
-
-                    'false'
-
+    return jsonify(
+        {
+            "needs_pin":
+                bool(
+                    configured_pin_hash()
                 )
+                and not session.get(
+                    "ok"
+                ),
 
-            )
+            "api_ready":
+                bool(
+                    api_key()
+                ),
 
-    })
+            "direct_fetch":
+                direct_fetch_enabled(),
 
-@app.get('/api/settings')
+            "api_fallback":
+                api_fallback_enabled()
+        }
+    )
 
+
+@app.get("/api/settings")
 @auth_required
-
 def get_settings_api():
 
-    return jsonify({
+    return jsonify(
+        {
+            "api_ready":
+                bool(
+                    api_key()
+                ),
 
-        'api_ready':
+            "pin_set":
+                bool(
+                    configured_pin_hash()
+                ),
 
-            bool(api_key()),
+            "direct_fetch":
+                direct_fetch_enabled(),
 
-        'pin_set':
+            "api_fallback":
+                api_fallback_enabled()
+        }
+    )
 
-            bool(configured_pin_hash()),
 
-        'direct_fetch':
-
-            truthy(
-
-                os.getenv(
-
-                    'ENABLE_DIRECT_FETCH',
-
-                    'false'
-
-                )
-
-            )
-
-    })
-
-@app.post('/api/settings')
-
+@app.post("/api/settings")
 @auth_required
-
 def save_settings_api():
 
-    x = request.json or {}
+    x = (
+        request.json
+        or {}
+    )
 
     if (
-
-        'klaz_api_key' in x
-
-        and x['klaz_api_key']
-
+        "klaz_api_key" in x
+        and x["klaz_api_key"]
     ):
 
         set_setting(
-
-            'klaz_api_key',
-
+            "klaz_api_key",
             str(
-
-                x['klaz_api_key']
-
+                x["klaz_api_key"]
             ).strip()
-
         )
 
     if (
-
-        'app_pin' in x
-
+        "app_pin" in x
         and str(
-
-            x['app_pin']
-
+            x["app_pin"]
         ).strip()
-
     ):
 
         pin = str(
-
-            x['app_pin']
-
+            x["app_pin"]
         ).strip()
 
         if len(pin) < 4:
 
-            return jsonify({
-
-                'error':
-
-                'PIN muss mindestens '
-
-                '4 Zeichen haben.'
-
-            }), 400
+            return jsonify(
+                {
+                    "error":
+                        "PIN muss mindestens "
+                        "4 Zeichen haben."
+                }
+            ), 400
 
         set_setting(
-
-            'app_pin_hash',
-
-            generate_password_hash(pin)
-
+            "app_pin_hash",
+            generate_password_hash(
+                pin
+            )
         )
 
-        session['ok'] = True
+        session["ok"] = True
 
-    return jsonify({
+    return jsonify(
+        {
+            "ok":
+                True,
+            "api_ready":
+                bool(
+                    api_key()
+                ),
+            "pin_set":
+                bool(
+                    configured_pin_hash()
+                )
+        }
+    )
 
-        'ok': True,
 
-        'api_ready': bool(api_key()),
+# ------------------------------------------------------------
+# ANZEIGEN AUFLISTEN
+# ------------------------------------------------------------
 
-        'pin_set':
-
-            bool(configured_pin_hash())
-
-    })
-
-@app.get('/api/ads')
-
+@app.get("/api/ads")
 @auth_required
-
 def list_ads():
 
     con = db()
 
     rows = [
-
         dict(x)
-
         for x in con.execute(
-
-            '''
-
+            """
             SELECT *
-
             FROM ads
-
             ORDER BY
-
                 deleted ASC,
-
                 updated_at DESC
-
-            '''
-
+            """
         )
-
     ]
 
     con.close()
 
     return jsonify(rows)
 
-@app.post('/api/ads/manual')
 
+# ------------------------------------------------------------
+# MANUELL EINTRAGEN
+# ------------------------------------------------------------
+
+@app.post("/api/ads/manual")
 @auth_required
-
 def manual_ad():
 
-    x = request.json or {}
+    x = (
+        request.json
+        or {}
+    )
 
     url = (
-
         clean_url(
-
-            x.get('url', '')
-
+            x.get(
+                "url",
+                ""
+            )
         )
-
-        if x.get('url')
-
-        else ''
-
+        if x.get(
+            "url"
+        )
+        else ""
     )
 
-    aid = extract_ad_id(url)
+    aid = extract_ad_id(
+        url
+    )
 
-    lat = x.get('lat')
+    lat = x.get(
+        "lat"
+    )
 
-    lon = x.get('lon')
+    lon = x.get(
+        "lon"
+    )
 
-    place = x.get('place', '')
+    place = x.get(
+        "place",
+        ""
+    )
 
     if (
-
         (not lat or not lon)
-
         and place
-
     ):
 
-        g = geocode(place)
+        g = geocode(
+            place
+        )
 
         if g:
+            lat = g["lat"]
+            lon = g["lon"]
 
-            lat = g['lat']
-
-            lon = g['lon']
+    item = {
+        "ad_id":
+            aid,
+        "url":
+            url,
+        "title":
+            x.get(
+                "title"
+            )
+            or "Kleinanzeige",
+        "price_text":
+            x.get(
+                "price_text",
+                ""
+            ),
+        "price_amount":
+            None,
+        "place":
+            place,
+        "lat":
+            lat,
+        "lon":
+            lon,
+        "source":
+            "manual",
+        "source_ref":
+            None,
+        "status":
+            "ACTIVE",
+        "deleted":
+            0,
+        "image_url":
+            "",
+        "created_at":
+            now(),
+        "updated_at":
+            now(),
+        "last_checked":
+            now()
+    }
 
     return jsonify(
-
-        upsert_ad({
-
-            'ad_id': aid,
-
-            'url': url,
-
-            'title':
-
-                x.get('title')
-
-                or 'Kleinanzeige',
-
-            'price_text':
-
-                x.get('price_text', ''),
-
-            'price_amount':
-
-                None,
-
-            'place':
-
-                place,
-
-            'lat':
-
-                lat,
-
-            'lon':
-
-                lon,
-
-            'source':
-
-                'manual',
-
-            'source_ref':
-
-                None,
-
-            'status':
-
-                'ACTIVE',
-
-            'deleted':
-
-                0,
-
-            'image_url':
-
-                '',
-
-            'created_at':
-
-                now(),
-
-            'updated_at':
-
-                now(),
-
-            'last_checked':
-
-                now()
-
-        })
-
+        upsert_ad(
+            item
+        )
     )
 
-@app.post('/api/import/ad')
 
+# ------------------------------------------------------------
+# EINZELNE ANZEIGE IMPORTIEREN
+# DIREKT ZUERST, KEINE CREDITS
+# ------------------------------------------------------------
+
+@app.post("/api/import/ad")
 @auth_required
-
 def import_ad():
 
     url = (
+        (
+            request.json
+            or {}
+        ).get(
+            "url",
+            ""
+        )
+        .strip()
+    )
 
-        request.json
+    if not url:
 
-        or {}
+        return jsonify(
+            {
+                "error":
+                    "Kein Link angegeben."
+            }
+        ), 400
 
-    ).get(
-
-        'url',
-
-        ''
-
-    ).strip()
-
-    aid = extract_ad_id(url)
+    aid = extract_ad_id(
+        url
+    )
 
     if not aid:
 
-        return jsonify({
-
-            'error':
-
-                'Inserat-ID konnte '
-
-                'aus dem Link nicht '
-
-                'erkannt werden.'
-
-        }), 400
-
-    try:
-
-        j = klaz_get(
-
-            f'/ads/{aid}'
-
-        )
-
-        ad = (
-
-            (
-
-                j.get('data')
-
-                or {}
-
-            ).get('ad')
-
-            or {}
-
-        )
-
-        ad.setdefault(
-
-            'ad_id',
-
-            aid
-
-        )
-
-        ad.setdefault(
-
-            'ad_url',
-
-            clean_url(url)
-
-        )
-
         return jsonify(
+            {
+                "error":
+                    "Inserat-ID konnte "
+                    "aus dem Link nicht "
+                    "erkannt werden."
+            }
+        ), 400
 
-            upsert_ad(
+    direct_error = None
 
-                normalize_ad(
+    if direct_fetch_enabled():
 
-                    ad,
+        try:
 
-                    'link'
-
-                )
-
+            item = parse_direct_ad(
+                url
             )
 
-        )
+            return jsonify(
+                upsert_ad(
+                    item
+                )
+            )
 
-    except Exception as e:
+        except Exception as e:
 
-        return jsonify({
+            direct_error = str(e)
 
-            'error':
+    if (
+        api_fallback_enabled()
+        and api_key()
+    ):
 
-                str(e),
+        try:
 
-            'can_manual':
+            j = klaz_get(
+                f"/ads/{aid}"
+            )
 
-                True,
+            ad = (
+                (
+                    j.get("data")
+                    or {}
+                ).get("ad")
+                or {}
+            )
 
-            'ad_id':
+            ad.setdefault(
+                "ad_id",
+                aid
+            )
 
-                aid,
-
-            'url':
-
+            ad.setdefault(
+                "ad_url",
                 clean_url(url)
+            )
 
-        }), 400
+            item = normalize_api_ad(
+                ad,
+                "api-fallback"
+            )
 
-@app.delete('/api/ads/<int:rid>')
+            return jsonify(
+                upsert_ad(
+                    item
+                )
+            )
 
+        except Exception as e:
+
+            return jsonify(
+                {
+                    "error":
+                        str(e),
+                    "direct_error":
+                        direct_error,
+                    "can_manual":
+                        True
+                }
+            ), 400
+
+    return jsonify(
+        {
+            "error":
+                direct_error
+                or "Direkter Abruf fehlgeschlagen.",
+            "can_manual":
+                True,
+            "ad_id":
+                aid,
+            "url":
+                clean_url(url)
+        }
+    ), 400
+
+
+# ------------------------------------------------------------
+# ANZEIGE LÖSCHEN
+# ------------------------------------------------------------
+
+@app.delete("/api/ads/<int:rid>")
 @auth_required
-
 def del_ad(rid):
 
     con = db()
 
     con.execute(
-
-        'DELETE FROM ads WHERE id=?',
-
-        (rid,)
-
+        """
+        DELETE FROM ads
+        WHERE id=?
+        """,
+        (
+            rid,
+        )
     )
 
     con.commit()
-
     con.close()
 
-    return jsonify({
+    return jsonify(
+        {
+            "ok":
+                True
+        }
+    )
 
-        'ok': True
 
-    })
+# ------------------------------------------------------------
+# ANZEIGE ÄNDERN
+# ------------------------------------------------------------
 
-@app.patch('/api/ads/<int:rid>')
-
+@app.patch("/api/ads/<int:rid>")
 @auth_required
-
 def patch_ad(rid):
 
-    x = request.json or {}
+    x = (
+        request.json
+        or {}
+    )
 
     allowed = {
-
-        'note',
-
-        'selected',
-
-        'deleted',
-
-        'status'
-
+        "note",
+        "selected",
+        "deleted",
+        "status"
     }
 
     sets = []
-
     vals = []
 
     for k, v in x.items():
@@ -1685,393 +2182,338 @@ def patch_ad(rid):
         if k in allowed:
 
             sets.append(
-
-                f'{k}=?'
-
+                f"{k}=?"
             )
 
             vals.append(v)
 
     if not sets:
 
-        return jsonify({
-
-            'ok': True
-
-        })
+        return jsonify(
+            {
+                "ok":
+                    True
+            }
+        )
 
     con = db()
 
     con.execute(
-
-        f'''
-
+        f"""
         UPDATE ads
-
         SET
-
             {",".join(sets)},
-
             updated_at=?
-
         WHERE id=?
-
-        ''',
-
-        vals + [
-
+        """,
+        vals
+        + [
             now(),
-
             rid
-
         ]
-
     )
 
     con.commit()
-
     con.close()
 
-    return jsonify({
+    return jsonify(
+        {
+            "ok":
+                True
+        }
+    )
 
-        'ok': True
 
-    })
+# ------------------------------------------------------------
+# ALLE ANZEIGEN PRÜFEN
+# OHNE CREDITS
+# ------------------------------------------------------------
 
-@app.post('/api/refresh')
-
+@app.post("/api/refresh")
 @auth_required
-
 def refresh_ads():
 
     con = db()
 
     rows = [
-
         dict(x)
-
         for x in con.execute(
-
-            '''
-
+            """
             SELECT *
-
             FROM ads
-
             WHERE
-
-                ad_id IS NOT NULL
-
-                AND ad_id<>''
-
-            '''
-
+                url IS NOT NULL
+                AND url<>''
+            """
         )
-
     ]
 
     con.close()
 
-    changed = 0
-
+    checked = 0
+    removed = 0
+    blocked = 0
     errors = []
 
     for x in rows:
 
-        try:
+        status = check_direct_status(
+            x["url"]
+        )
 
-            j = klaz_get(
+        state = status.get(
+            "state"
+        )
 
-                f'/ads/{x["ad_id"]}/status'
-
-            )
-
-            st = (
-
-                (
-
-                    j.get('data')
-
-                    or {}
-
-                ).get('status')
-
-                or {}
-
-            )
-
-            deleted = (
-
-                1
-
-                if (
-
-                    st.get('deleted')
-
-                    or st.get('status')
-
-                    not in (
-
-                        None,
-
-                        'ACTIVE'
-
-                    )
-
-                )
-
-                else 0
-
-            )
+        if state == "ACTIVE":
 
             con = db()
 
             con.execute(
-
-                '''
-
+                """
                 UPDATE ads
-
                 SET
-
-                    status=?,
-
-                    deleted=?,
-
+                    status='ACTIVE',
+                    deleted=0,
                     last_checked=?,
-
                     updated_at=?
-
                 WHERE id=?
-
-                ''',
-
+                """,
                 (
-
-                    st.get('status')
-
-                    or 'UNKNOWN',
-
-                    deleted,
-
                     now(),
-
                     now(),
-
-                    x['id']
-
+                    x["id"]
                 )
-
             )
 
             con.commit()
-
             con.close()
 
-            changed += 1
+            checked += 1
 
-        except Exception as e:
+        elif state == "REMOVED":
 
-            errors.append({
+            con = db()
 
-                'id':
+            con.execute(
+                """
+                UPDATE ads
+                SET
+                    status='REMOVED',
+                    deleted=1,
+                    last_checked=?,
+                    updated_at=?
+                WHERE id=?
+                """,
+                (
+                    now(),
+                    now(),
+                    x["id"]
+                )
+            )
 
-                    x['id'],
+            con.commit()
+            con.close()
 
-                'error':
+            checked += 1
+            removed += 1
 
-                    str(e)
+        elif state == "BLOCKED":
 
-            })
+            blocked += 1
 
-    return jsonify({
+            errors.append(
+                {
+                    "id":
+                        x["id"],
+                    "error":
+                        "Direkter Abruf "
+                        "vorübergehend blockiert"
+                }
+            )
 
-        'checked':
+        else:
 
-            changed,
+            errors.append(
+                {
+                    "id":
+                        x["id"],
+                    "error":
+                        status.get(
+                            "error"
+                        )
+                        or "Status konnte "
+                           "nicht geprüft werden"
+                }
+            )
 
-        'errors':
+        time.sleep(
+            0.4
+        )
 
-            errors
+    return jsonify(
+        {
+            "checked":
+                checked,
+            "removed":
+                removed,
+            "blocked":
+                blocked,
+            "errors":
+                errors
+        }
+    )
 
-    })
 
-@app.get('/api/searches')
+# ------------------------------------------------------------
+# SUCHEN AUFLISTEN
+# ------------------------------------------------------------
 
+@app.get("/api/searches")
 @auth_required
-
 def searches():
 
     con = db()
 
     rows = [
-
         dict(x)
-
         for x in con.execute(
-
-            '''
-
+            """
             SELECT *
-
             FROM searches
-
             ORDER BY id DESC
-
-            '''
-
+            """
         )
-
     ]
 
     con.close()
 
     return jsonify(rows)
 
-@app.post('/api/searches')
 
+# ------------------------------------------------------------
+# SUCHE SPEICHERN
+# ------------------------------------------------------------
+
+@app.post("/api/searches")
 @auth_required
-
 def add_search():
 
-    x = request.json or {}
+    x = (
+        request.json
+        or {}
+    )
 
-    url = x.get(
-
-        'url',
-
-        ''
-
-    ).strip()
+    url = (
+        x.get(
+            "url",
+            ""
+        )
+        .strip()
+    )
 
     parsed = (
-
-        parse_search_url(url)
-
+        parse_search_url(
+            url
+        )
         if url
-
         else {}
-
     )
 
     q = (
-
-        x.get('query')
-
-        or parsed.get('query')
-
-        or ''
-
+        x.get("query")
+        or parsed.get(
+            "query"
+        )
+        or ""
     )
 
     cat = (
-
-        x.get('category_id')
-
-        or parsed.get('category_id')
-
+        x.get(
+            "category_id"
+        )
+        or parsed.get(
+            "category_id"
+        )
     )
 
     loc = (
-
-        x.get('location_id')
-
-        or parsed.get('location_id')
-
+        x.get(
+            "location_id"
+        )
+        or parsed.get(
+            "location_id"
+        )
     )
 
     dist = (
-
-        x.get('distance')
-
-        if x.get('distance') is not None
-
-        else parsed.get('distance')
-
+        x.get(
+            "distance"
+        )
+        if x.get(
+            "distance"
+        ) is not None
+        else parsed.get(
+            "distance"
+        )
     )
 
     minp = (
-
-        x.get('min_price')
-
-        if x.get('min_price') is not None
-
-        else parsed.get('min_price')
-
+        x.get(
+            "min_price"
+        )
+        if x.get(
+            "min_price"
+        ) is not None
+        else parsed.get(
+            "min_price"
+        )
     )
 
     maxp = (
-
-        x.get('max_price')
-
-        if x.get('max_price') is not None
-
-        else parsed.get('max_price')
-
+        x.get(
+            "max_price"
+        )
+        if x.get(
+            "max_price"
+        ) is not None
+        else parsed.get(
+            "max_price"
+        )
     )
 
     con = db()
 
     cur = con.execute(
-
-        '''
-
+        """
         INSERT INTO searches(
-
             name,
-
             url,
-
             query,
-
             category_id,
-
             location_id,
-
             distance,
-
             min_price,
-
             max_price,
-
             created_at
-
         )
-
-        VALUES(
-
-            ?,?,?,?,?,?,?,?,?
-
-        )
-
-        ''',
-
+        VALUES(?,?,?,?,?,?,?,?,?)
+        """,
         (
-
-            x.get('name')
-
+            x.get(
+                "name"
+            )
             or q
-
-            or 'Suche',
-
+            or "Suche",
             url,
-
             q,
-
             cat,
-
             loc,
-
             dist,
-
             minp,
-
             maxp,
-
             now()
-
         )
-
     )
 
     sid = cur.lastrowid
@@ -2079,717 +2521,563 @@ def add_search():
     con.commit()
 
     row = dict(
-
         con.execute(
-
-            '''
-
+            """
             SELECT *
-
             FROM searches
-
             WHERE id=?
-
-            ''',
-
-            (sid,)
-
+            """,
+            (
+                sid,
+            )
         ).fetchone()
-
     )
 
     con.close()
 
-    return jsonify(row)
+    return jsonify(
+        row
+    )
 
-@app.delete('/api/searches/<int:sid>')
 
+# ------------------------------------------------------------
+# SUCHE LÖSCHEN
+# ------------------------------------------------------------
+
+@app.delete("/api/searches/<int:sid>")
 @auth_required
-
 def del_search(sid):
 
     con = db()
 
     con.execute(
-
-        '''
-
+        """
         DELETE FROM searches
-
         WHERE id=?
-
-        ''',
-
-        (sid,)
-
+        """,
+        (
+            sid,
+        )
     )
 
     con.commit()
-
     con.close()
 
-    return jsonify({
+    return jsonify(
+        {
+            "ok":
+                True
+        }
+    )
 
-        'ok': True
 
-    })
+# ------------------------------------------------------------
+# SUCHE SYNCHRONISIEREN
+# DIREKT ZUERST, KEINE CREDITS
+# ------------------------------------------------------------
 
-@app.post('/api/searches/<int:sid>/sync')
-
+@app.post("/api/searches/<int:sid>/sync")
 @auth_required
-
 def sync_search(sid):
 
     con = db()
 
-    s = con.execute(
-
-        '''
-
+    row = con.execute(
+        """
         SELECT *
-
         FROM searches
-
         WHERE id=?
-
-        ''',
-
-        (sid,)
-
+        """,
+        (
+            sid,
+        )
     ).fetchone()
 
     con.close()
 
-    if not s:
-
-        return jsonify({
-
-            'error':
-
-                'Suche nicht gefunden'
-
-        }), 404
-
-    s = dict(s)
-
-    ads = []
-
-    try:
-
-        params = {
-
-            'q':
-
-                s['query'] or '',
-
-            'size':
-
-                min(
-
-                    int(
-
-                        (
-
-                            request.json
-
-                            or {}
-
-                        ).get(
-
-                            'size',
-
-                            100
-
-                        )
-
-                    ),
-
-                    100
-
-                )
-
-        }
-
-        for k in (
-
-            'category_id',
-
-            'location_id',
-
-            'distance',
-
-            'min_price',
-
-            'max_price'
-
-        ):
-
-            if s.get(k) not in (
-
-                None,
-
-                ''
-
-            ):
-
-                params[k] = s[k]
-
-        j = klaz_get(
-
-            '/search',
-
-            params
-
-        )
-
-        ads = (
-
-            (
-
-                j.get('data')
-
-                or {}
-
-            ).get('ads')
-
-            or []
-
-        )
-
-        out = [
-
-            upsert_ad(
-
-                normalize_ad(
-
-                    a,
-
-                    'search',
-
-                    str(sid)
-
-                )
-
-            )
-
-            for a in ads
-
-        ]
-
-    except Exception as e:
-
-        if (
-
-            s.get('url')
-
-            and truthy(
-
-                os.getenv(
-
-                    'ENABLE_DIRECT_FETCH',
-
-                    'false'
-
-                )
-
-            )
-
-        ):
-
-            raw = direct_fetch_search(
-
-                s['url']
-
-            )
-
-            out = []
-
-            for a in raw:
-
-                a['source_ref'] = str(sid)
-
-                if (
-
-                    not a.get('lat')
-
-                    and a.get('place')
-
-                ):
-
-                    g = geocode(
-
-                        a['place']
-
-                    )
-
-                    if g:
-
-                        a['lat'] = g['lat']
-
-                        a['lon'] = g['lon']
-
-                out.append(
-
-                    upsert_ad(a)
-
-                )
-
-        else:
-
-            return jsonify({
-
-                'error': str(e)
-
-            }), 400
-
-    con = db()
-
-    con.execute(
-
-        '''
-
-        UPDATE searches
-
-        SET last_sync=?
-
-        WHERE id=?
-
-        ''',
-
-        (
-
-            now(),
-
-            sid
-
-        )
-
+    if not row:
+
+        return jsonify(
+            {
+                "error":
+                    "Suche nicht gefunden"
+            }
+        ), 404
+
+    s = dict(
+        row
     )
 
-    con.commit()
+    direct_error = None
+    out = []
 
-    con.close()
+    if (
+        s.get("url")
+        and direct_fetch_enabled()
+    ):
 
-    return jsonify({
+        try:
 
-        'count': len(out)
+            raw = direct_fetch_search(
+                s["url"]
+            )
 
-    })
+            for item in raw:
 
-@app.post('/api/geocode')
+                item[
+                    "source_ref"
+                ] = str(
+                    sid
+                )
 
+                out.append(
+                    upsert_ad(
+                        item
+                    )
+                )
+
+            con = db()
+
+            con.execute(
+                """
+                UPDATE searches
+                SET last_sync=?
+                WHERE id=?
+                """,
+                (
+                    now(),
+                    sid
+                )
+            )
+
+            con.commit()
+            con.close()
+
+            return jsonify(
+                {
+                    "count":
+                        len(out),
+                    "source":
+                        "direct"
+                }
+            )
+
+        except Exception as e:
+
+            direct_error = str(e)
+
+    if (
+        api_fallback_enabled()
+        and api_key()
+    ):
+
+        try:
+
+            params = {
+                "q":
+                    s.get("query")
+                    or "",
+                "size":
+                    min(
+                        int(
+                            (
+                                request.json
+                                or {}
+                            ).get(
+                                "size",
+                                20
+                            )
+                        ),
+                        20
+                    )
+            }
+
+            for k in (
+                "category_id",
+                "location_id",
+                "distance",
+                "min_price",
+                "max_price"
+            ):
+
+                if s.get(k) not in (
+                    None,
+                    ""
+                ):
+
+                    params[k] = s[k]
+
+            j = klaz_get(
+                "/search",
+                params
+            )
+
+            ads = (
+                (
+                    j.get("data")
+                    or {}
+                ).get(
+                    "ads"
+                )
+                or []
+            )
+
+            for a in ads:
+
+                item = normalize_api_ad(
+                    a,
+                    "search-api",
+                    str(sid)
+                )
+
+                out.append(
+                    upsert_ad(
+                        item
+                    )
+                )
+
+            con = db()
+
+            con.execute(
+                """
+                UPDATE searches
+                SET last_sync=?
+                WHERE id=?
+                """,
+                (
+                    now(),
+                    sid
+                )
+            )
+
+            con.commit()
+            con.close()
+
+            return jsonify(
+                {
+                    "count":
+                        len(out),
+                    "source":
+                        "api"
+                }
+            )
+
+        except Exception as e:
+
+            return jsonify(
+                {
+                    "error":
+                        str(e),
+                    "direct_error":
+                        direct_error
+                }
+            ), 400
+
+    return jsonify(
+        {
+            "error":
+                direct_error
+                or (
+                    "Direkter Suchabruf "
+                    "fehlgeschlagen."
+                )
+        }
+    ), 400
+
+
+# ------------------------------------------------------------
+# GEO API
+# ------------------------------------------------------------
+
+@app.post("/api/geocode")
 @auth_required
-
 def api_geocode():
 
     g = geocode(
-
         (
-
             request.json
-
             or {}
-
         ).get(
-
-            'q',
-
-            ''
-
+            "q",
+            ""
         )
-
     )
 
     return jsonify(
-
-        g or {}
-
+        g
+        or {}
     ), (
-
         200
-
         if g
-
         else 404
-
     )
 
-@app.post('/api/route')
 
+# ------------------------------------------------------------
+# ROUTENPLANUNG
+# ------------------------------------------------------------
+
+@app.post("/api/route")
 @auth_required
-
 def route():
 
-    x = request.json or {}
+    x = (
+        request.json
+        or {}
+    )
 
-    start = x.get('start')
+    start = x.get(
+        "start"
+    )
 
-    end = x.get('end')
+    end = x.get(
+        "end"
+    )
 
-    ids = x.get('ad_ids') or []
+    ids = (
+        x.get(
+            "ad_ids"
+        )
+        or []
+    )
 
     if isinstance(
-
         start,
-
         str
-
     ):
 
-        start = geocode(start)
-
-    if (
-
-        isinstance(
-
-            end,
-
-            str
-
+        start = geocode(
+            start
         )
 
+    if (
+        isinstance(
+            end,
+            str
+        )
         and end.strip()
-
     ):
 
-        end = geocode(end)
+        end = geocode(
+            end
+        )
 
     if not start:
 
-        return jsonify({
-
-            'error':
-
-                'Startort nicht gefunden'
-
-        }), 400
+        return jsonify(
+            {
+                "error":
+                    "Startort "
+                    "nicht gefunden"
+            }
+        ), 400
 
     con = db()
 
-    qmarks = (
+    if ids:
 
-        ','.join(
-
-            '?' * len(ids)
-
+        qmarks = ",".join(
+            "?"
+            for _ in ids
         )
 
-        if ids
-
-        else 'NULL'
-
-    )
-
-    rows = (
-
-        [
-
+        rows = [
             dict(r)
-
             for r in con.execute(
-
-                f'''
-
+                f"""
                 SELECT *
-
                 FROM ads
-
                 WHERE
-
                     id IN ({qmarks})
-
+                    AND deleted=0
                     AND lat IS NOT NULL
-
                     AND lon IS NOT NULL
-
-                ''',
-
+                """,
                 ids
-
             )
-
         ]
 
-        if ids
-
-        else []
-
-    )
+    else:
+        rows = []
 
     con.close()
 
     pts = [
-
         {
-
-            'lat':
-
-                start['lat'],
-
-            'lon':
-
-                start['lon'],
-
-            'label':
-
-                'Start',
-
-            'id':
-
+            "lat":
+                start["lat"],
+            "lon":
+                start["lon"],
+            "label":
+                "Start",
+            "id":
                 None
-
         }
-
-    ] + [
-
-        {
-
-            'lat':
-
-                r['lat'],
-
-            'lon':
-
-                r['lon'],
-
-            'label':
-
-                r['title'],
-
-            'id':
-
-                r['id']
-
-        }
-
-        for r in rows
-
     ]
+
+    for r in rows:
+
+        pts.append(
+            {
+                "lat":
+                    r["lat"],
+                "lon":
+                    r["lon"],
+                "label":
+                    r["title"],
+                "id":
+                    r["id"]
+            }
+        )
 
     if end:
 
-        pts.append({
-
-            'lat':
-
-                end['lat'],
-
-            'lon':
-
-                end['lon'],
-
-            'label':
-
-                'Ziel',
-
-            'id':
-
-                None
-
-        })
+        pts.append(
+            {
+                "lat":
+                    end["lat"],
+                "lon":
+                    end["lon"],
+                "label":
+                    "Ziel",
+                "id":
+                    None
+            }
+        )
 
     if len(pts) < 2:
 
-        return jsonify({
+        return jsonify(
+            {
+                "error":
+                    "Mindestens eine "
+                    "Abholung auswählen."
+            }
+        ), 400
 
-            'error':
-
-                'Mindestens eine '
-
-                'Abholung auswählen.'
-
-        }), 400
-
-    coords = ';'.join(
-
+    coords = ";".join(
         f"{p['lon']},{p['lat']}"
-
         for p in pts
-
     )
 
     params = {
-
-        'source':
-
-            'first',
-
-        'destination':
-
-            'last'
-
+        "source":
+            "first",
+        "destination":
+            "last"
             if end
-
-            else 'any',
-
-        'roundtrip':
-
-            'false'
-
+            else "any",
+        "roundtrip":
+            "false"
             if end
-
-            else 'true',
-
-        'geometries':
-
-            'geojson',
-
-        'overview':
-
-            'full',
-
-        'steps':
-
-            'false'
-
+            else "true",
+        "geometries":
+            "geojson",
+        "overview":
+            "full",
+        "steps":
+            "false"
     }
 
     r = requests.get(
-
-        f'{OSRM}/trip/v1/driving/{coords}',
-
+        f"{OSRM}/trip/v1/driving/{coords}",
         params=params,
-
         headers={
-
-            'User-Agent': UA
-
+            "User-Agent":
+                "Abholkarte/1.0"
         },
-
         timeout=30
-
     )
 
     if not r.ok:
 
-        return jsonify({
-
-            'error':
-
-                'Routingdienst '
-
-                'nicht erreichbar'
-
-        }), 502
+        return jsonify(
+            {
+                "error":
+                    "Routingdienst "
+                    "nicht erreichbar"
+            }
+        ), 502
 
     j = r.json()
 
     trips = (
-
-        j.get('trips')
-
+        j.get("trips")
         or []
-
     )
 
     if not trips:
 
-        return jsonify({
-
-            'error':
-
-                'Keine Route gefunden'
-
-        }), 400
+        return jsonify(
+            {
+                "error":
+                    "Keine Route gefunden"
+            }
+        ), 400
 
     wps = (
-
-        j.get('waypoints')
-
+        j.get("waypoints")
         or []
-
     )
 
     ordered = sorted(
-
         zip(
-
             wps,
-
             pts
-
         ),
-
         key=lambda z:
-
             z[0].get(
-
-                'waypoint_index',
-
+                "waypoint_index",
                 0
-
             )
-
     )
 
-    return jsonify({
+    return jsonify(
+        {
+            "distance_km":
+                round(
+                    trips[0]["distance"]
+                    / 1000,
+                    1
+                ),
 
-        'distance_km':
+            "duration_min":
+                round(
+                    trips[0]["duration"]
+                    / 60
+                ),
 
-            round(
+            "geometry":
+                trips[0]["geometry"],
 
-                trips[0]['distance']
+            "order":
+                [
+                    {
+                        "label":
+                            p["label"],
+                        "id":
+                            p["id"]
+                    }
+                    for _, p
+                    in ordered
+                ]
+        }
+    )
 
-                / 1000,
 
-                1
+# ------------------------------------------------------------
+# START
+# ------------------------------------------------------------
 
-            ),
-
-        'duration_min':
-
-            round(
-
-                trips[0]['duration']
-
-                / 60
-
-            ),
-
-        'geometry':
-
-            trips[0]['geometry'],
-
-        'order':
-
-            [
-
-                {
-
-                    'label':
-
-                        p['label'],
-
-                    'id':
-
-                        p['id']
-
-                }
-
-                for _, p in ordered
-
-            ]
-
-    })
-
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     app.run(
-
-        host='0.0.0.0',
-
+        host="0.0.0.0",
         port=int(
-
             os.getenv(
-
-                'PORT',
-
-                '8080'
-
+                "PORT",
+                "8080"
             )
-
         ),
-
         debug=True
-
     )
