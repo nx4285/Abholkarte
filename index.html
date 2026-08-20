@@ -33,14 +33,8 @@ header{
     align-items:center;
 }
 
-h1{
-    margin:0;
-    font-size:19px;
-}
-
-h2,h3{
-    margin-top:8px;
-}
+h1{margin:0;font-size:19px}
+h2,h3{margin-top:8px}
 
 .small{
     font-size:12px;
@@ -58,9 +52,7 @@ aside{
     padding:12px;
 }
 
-.mapwrap{
-    position:relative;
-}
+.mapwrap{position:relative}
 
 #map{
     width:100%;
@@ -125,31 +117,23 @@ input,textarea{
     color:#111827;
 }
 
-textarea{
-    min-height:80px;
-}
+textarea{min-height:80px}
 
 .row{
     display:flex;
     gap:7px;
 }
 
-.row>*{
-    flex:1;
-}
+.row>*{flex:1}
 
-.hidden{
-    display:none!important;
-}
+.hidden{display:none!important}
 
 .item{
     border-top:1px solid #eee;
     padding:10px 0;
 }
 
-.item:first-child{
-    border-top:0;
-}
+.item:first-child{border-top:0}
 
 .item h3{
     font-size:14px;
@@ -161,9 +145,7 @@ textarea{
     color:#6b7280;
 }
 
-.price{
-    font-weight:800;
-}
+.price{font-weight:800}
 
 .badge{
     display:inline-block;
@@ -173,9 +155,7 @@ textarea{
     font-size:11px;
 }
 
-.inactive{
-    opacity:.45;
-}
+.inactive{opacity:.45}
 
 .toolbar{
     display:flex;
@@ -214,11 +194,6 @@ textarea{
     box-shadow:0 2px 14px #0003;
 }
 
-.routebox ol{
-    padding-left:20px;
-    font-size:12px;
-}
-
 .map-pin{
     width:24px;
     height:24px;
@@ -228,13 +203,8 @@ textarea{
     box-shadow:0 1px 5px #0008;
 }
 
-.map-pin.red{
-    background:#dc2626;
-}
-
-.map-pin.blue{
-    background:#2563eb;
-}
+.map-pin.red{background:#dc2626}
+.map-pin.blue{background:#2563eb}
 
 .map-pin span{
     display:block;
@@ -245,28 +215,34 @@ textarea{
     background:white;
 }
 
-@media(max-width:800px){
+.share-status{
+    background:#dcfce7;
+    color:#166534;
+    border-radius:10px;
+    padding:10px;
+    margin-bottom:10px;
+    font-size:13px;
+    font-weight:600;
+}
 
+.share-status.error{
+    background:#fee2e2;
+    color:#991b1b;
+}
+
+@media(max-width:800px){
     .shell{
         display:block;
         height:auto;
     }
 
-    aside{
-        padding-bottom:20px;
-    }
+    aside{padding-bottom:20px}
 
-    .mapwrap{
-        height:52dvh;
-    }
+    .mapwrap{height:52dvh}
 
     #map{
         height:52dvh;
         min-height:350px;
-    }
-
-    .routebox{
-        max-width:220px;
     }
 }
 </style>
@@ -275,1343 +251,1514 @@ textarea{
 <body>
 
 <div id="login" class="login hidden">
-    <div class="card">
-        <h2>Abholkarte</h2>
-        <input id="pin" type="password" placeholder="PIN">
-        <button id="loginButton">Öffnen</button>
-    </div>
+<div class="card">
+<h2>Abholkarte</h2>
+<input id="pin" type="password" placeholder="PIN">
+<button id="loginButton">Öffnen</button>
+</div>
 </div>
 
 <header>
-    <h1>Abholkarte</h1>
-    <button class="alt" id="refreshButton">↻ Aktualisieren</button>
+<h1>Abholkarte</h1>
+<button class="alt" id="refreshButton">↻ Aktualisieren</button>
 </header>
 
 <div class="shell">
 
 <aside>
 
+<div id="shareStatus" class="share-status hidden"></div>
+
 <div class="tabs">
-    <button class="tab active" data-tab="ads">Anzeigen</button>
-    <button class="tab" data-tab="add">Hinzufügen</button>
-    <button class="tab" data-tab="search">Suchen</button>
-    <button class="tab" data-tab="route">Route</button>
-    <button class="tab" data-tab="settings">Einstellungen</button>
+<button class="tab active" data-tab="ads">Anzeigen</button>
+<button class="tab" data-tab="add">Hinzufügen</button>
+<button class="tab" data-tab="search">Suchen</button>
+<button class="tab" data-tab="route">Route</button>
+<button class="tab" data-tab="settings">Einstellungen</button>
 </div>
 
 <section id="ads" class="pane">
 
-    <div class="card">
+<div class="card">
+<div class="row">
+<input id="filter" placeholder="Filtern…">
+<button class="alt" id="selectAllButton">Alle wählen</button>
+</div>
 
-        <div class="row">
-            <input id="filter" placeholder="Filtern…">
-            <button class="alt" id="selectAllButton">Alle wählen</button>
-        </div>
+<div class="small">
+<span id="count">0 Anzeigen</span>
+· Autos rot, alles andere blau.
+</div>
+</div>
 
-        <div class="small">
-            <span id="count">0 Anzeigen</span>
-            · Autos rot, alles andere blau.
-        </div>
-
-    </div>
-
-    <div id="adlist" class="card">
-        <div class="small">Lade Anzeigen…</div>
-    </div>
+<div id="adlist" class="card">
+<div class="small">Lade Anzeigen…</div>
+</div>
 
 </section>
-
 
 <section id="add" class="pane hidden">
 
-    <div class="card">
+<div class="card">
+<h3>Link automatisch importieren</h3>
 
-        <h3>Link automatisch importieren</h3>
+<textarea
+id="adurl"
+placeholder="Kleinanzeigen-Link oder kompletten Teilen-Text einfügen"
+></textarea>
 
-        <textarea
-            id="adurl"
-            placeholder="Kleinanzeigen-Link oder den kompletten Teilen-Text einfügen"
-        ></textarea>
+<button id="importButton">Importieren</button>
 
-        <button id="importButton">Importieren</button>
+<div id="importmsg" class="small"></div>
+</div>
 
-        <div id="importmsg" class="small"></div>
+<div class="card">
+<h3>Manuell hinzufügen</h3>
 
-    </div>
+<input id="mtitle" placeholder="Titel">
+<input id="mprice" placeholder="Preis">
+<input id="mplace" placeholder="PLZ / Ort">
+<input id="murl" placeholder="Kleinanzeigen-Link">
 
-
-    <div class="card">
-
-        <h3>Manuell hinzufügen</h3>
-
-        <input id="mtitle" placeholder="Titel">
-        <input id="mprice" placeholder="Preis">
-        <input id="mplace" placeholder="PLZ / Ort">
-        <input id="murl" placeholder="Kleinanzeigen-Link">
-
-        <button id="manualButton">Speichern</button>
-
-    </div>
+<button id="manualButton">Speichern</button>
+</div>
 
 </section>
-
 
 <section id="search" class="pane hidden">
 
-    <div class="card">
+<div class="card">
+<h3>Komplette Kleinanzeigen-Suche</h3>
 
-        <h3>Komplette Kleinanzeigen-Suche</h3>
+<textarea
+id="surl"
+placeholder="Suchlink aus Kleinanzeigen"
+></textarea>
 
-        <textarea
-            id="surl"
-            placeholder="Suchlink aus Kleinanzeigen"
-        ></textarea>
+<input
+id="sname"
+placeholder="Name, z. B. Dacia Spring"
+>
 
-        <input
-            id="sname"
-            placeholder="Name, z. B. Dacia Spring"
-        >
+<button id="saveSearchButton">Suche speichern</button>
+</div>
 
-        <button id="saveSearchButton">Suche speichern</button>
-
-    </div>
-
-    <div id="searches" class="card">
-        <div class="small">Noch keine gespeicherten Suchen.</div>
-    </div>
+<div id="searches" class="card">
+<div class="small">Noch keine gespeicherten Suchen.</div>
+</div>
 
 </section>
-
 
 <section id="route" class="pane hidden">
 
-    <div class="card">
+<div class="card">
+<h3>Abholroute planen</h3>
 
-        <h3>Abholroute planen</h3>
+<input
+id="rstart"
+placeholder="Start, z. B. 97783 Karsbach"
+>
 
-        <input
-            id="rstart"
-            placeholder="Start, z. B. 97783 Karsbach"
-        >
+<input
+id="rend"
+placeholder="Ziel – leer = Rundfahrt"
+>
 
-        <input
-            id="rend"
-            placeholder="Ziel – leer = Rundfahrt"
-        >
-
-        <button id="routeButton">
-            Optimale Reihenfolge berechnen
-        </button>
-
-    </div>
+<button id="routeButton">
+Optimale Reihenfolge berechnen
+</button>
+</div>
 
 </section>
 
-
 <section id="settings" class="pane hidden">
 
-    <div class="card">
+<div class="card">
+<h3>Einrichtung</h3>
 
-        <h3>Einrichtung</h3>
+<div id="setupstatus" class="small"></div>
 
-        <div id="setupstatus" class="small"></div>
+<br>
 
-        <br>
+<label class="small">Kleinanzeigen-Agent API-Key</label>
 
-        <label class="small">
-            Kleinanzeigen-Agent API-Key
-        </label>
+<input
+id="apikey"
+type="password"
+placeholder="klaz_live_…"
+>
 
-        <input
-            id="apikey"
-            type="password"
-            placeholder="klaz_live_…"
-        >
+<label class="small">Neue App-PIN</label>
 
-        <label class="small">
-            Neue App-PIN
-        </label>
+<input
+id="newpin"
+type="password"
+placeholder="mindestens 4 Zeichen"
+>
 
-        <input
-            id="newpin"
-            type="password"
-            placeholder="mindestens 4 Zeichen"
-        >
-
-        <button id="settingsButton">Speichern</button>
-
-    </div>
+<button id="settingsButton">Speichern</button>
+</div>
 
 </section>
 
 </aside>
 
-
 <div class="mapwrap">
-
-    <div id="map"></div>
-
-    <div
-        id="routebox"
-        class="routebox hidden"
-    ></div>
-
+<div id="map"></div>
+<div id="routebox" class="routebox hidden"></div>
 </div>
 
 </div>
-
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
 "use strict";
 
-let ads = [];
-let searches = [];
-let markers = [];
-let routeLayer = null;
-let cfg = {};
+let ads=[];
+let searches=[];
+let markers=[];
+let routeLayer=null;
+let cfg={};
 
-const $ = id => document.getElementById(id);
+const $=id=>document.getElementById(id);
 
-const map = L.map("map").setView([51.1,10.2],6);
+const map=L.map("map").setView([51.1,10.2],6);
 
 L.tileLayer(
-    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    {
-        maxZoom:19,
-        attribution:"© OpenStreetMap"
-    }
+"https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+{
+maxZoom:19,
+attribution:"© OpenStreetMap"
+}
 ).addTo(map);
 
-async function api(url, options = {}) {
 
-    const response = await fetch(
-        url,
-        {
-            headers:{
-                "Content-Type":"application/json"
-            },
-            ...options
-        }
-    );
+async function api(url,options={}){
 
-    const data = await response.json().catch(() => ({}));
-
-    if(
-        response.status === 401 &&
-        data.error === "PIN_REQUIRED"
-    ){
-        $("login").classList.remove("hidden");
-        throw new Error("PIN erforderlich");
-    }
-
-    if(!response.ok){
-        throw new Error(
-            data.error ||
-            data.message ||
-            "Fehler"
-        );
-    }
-
-    return data;
+const response=await fetch(
+url,
+{
+headers:{
+"Content-Type":"application/json"
+},
+...options
 }
+);
+
+const data=await response.json().catch(()=>({}));
+
+if(
+response.status===401 &&
+data.error==="PIN_REQUIRED"
+){
+$("login").classList.remove("hidden");
+throw new Error("PIN erforderlich");
+}
+
+if(!response.ok){
+throw new Error(
+data.error ||
+data.message ||
+"Fehler"
+);
+}
+
+return data;
+}
+
 
 function esc(value){
 
-    return String(value == null ? "" : value).replace(
-        /[&<>"']/g,
-        char => ({
-            "&":"&amp;",
-            "<":"&lt;",
-            ">":"&gt;",
-            "\"":"&quot;",
-            "'":"&#39;"
-        })[char]
-    );
+return String(
+value==null ? "" : value
+).replace(
+/[&<>"']/g,
+char=>({
+"&":"&amp;",
+"<":"&lt;",
+">":"&gt;",
+"\"":"&quot;",
+"'":"&#39;"
+})[char]
+);
 }
+
 
 function extractKleinanzeigenUrl(text){
 
-    const value = String(text || "").trim();
+const value=String(text||"").trim();
 
-    const match = value.match(
-        /https?:\/\/(?:www\.)?kleinanzeigen\.de\/[^\s]+/i
-    );
+const match=value.match(
+/https?:\/\/(?:www\.)?kleinanzeigen\.de\/[^\s]+/i
+);
 
-    if(!match){
-        return value;
-    }
+if(!match){
+return value;
+}
 
-    return match[0].replace(
-        /[.,;!?)\]}"]+$/g,
-        ""
-    );
+return match[0].replace(
+/[.,;!?)\]}"]+$/g,
+""
+);
 }
 
 
-/* Nur echte Auto-Kategorie rot */
+/*
+Nur echte Autoanzeigen rot.
+
+Die Kleinanzeigen-Kategorie wird aus dem Link gelesen.
+Kategorie 216 = Autos.
+*/
 
 function isVehicle(ad){
 
-    const url = String(ad.url || "");
+const url=String(ad.url||"");
 
-    /*
-      Beispiel:
-      .../3473515953-216-5935
+return /-216-\d+(?:[/?]|$)/.test(url);
 
-      216 = Kategorie Autos
-    */
-
-    return /-\d+-216-\d+(?:[/?]|$)/.test(url)
-        || /-216-\d+(?:[/?]|$)/.test(url);
 }
 
 
 function pinIcon(vehicle){
 
-    const color = vehicle ? "red" : "blue";
+const color=vehicle ? "red" : "blue";
 
-    return L.divIcon({
-        className:"",
-        html:
-            '<div class="map-pin ' +
-            color +
-            '"><span></span></div>',
-        iconSize:[24,24],
-        iconAnchor:[12,24],
-        popupAnchor:[0,-24]
-    });
+return L.divIcon({
+className:"",
+html:
+'<div class="map-pin '+
+color+
+'"><span></span></div>',
+iconSize:[24,24],
+iconAnchor:[12,24],
+popupAnchor:[0,-24]
+});
+}
+
+
+/*
+NEU:
+Übergebene Anzeige aus ?share= erkennen.
+
+Beispiel:
+
+https://abholkarte.../?share=https%3A%2F%2Fwww.kleinanzeigen.de%2F...
+*/
+
+function getSharedUrl(){
+
+const params=new URLSearchParams(
+window.location.search
+);
+
+const shared=params.get("share");
+
+if(!shared){
+return "";
+}
+
+return extractKleinanzeigenUrl(
+shared
+);
+}
+
+
+/*
+share= nach Verarbeitung aus der Browser-Adresse entfernen.
+
+Dadurch wird die gleiche Anzeige beim Neuladen nicht
+noch einmal importiert.
+*/
+
+function clearSharedUrl(){
+
+try{
+
+const cleanUrl=
+window.location.origin+
+window.location.pathname;
+
+window.history.replaceState(
+{},
+document.title,
+cleanUrl
+);
+
+}catch(error){
+console.log(error);
+}
+
+}
+
+
+function showShareStatus(text,error=false){
+
+const box=$("shareStatus");
+
+box.textContent=text;
+
+box.classList.remove("hidden");
+
+if(error){
+box.classList.add("error");
+}else{
+box.classList.remove("error");
+}
+
+setTimeout(
+()=>{
+box.classList.add("hidden");
+},
+5000
+);
+
+}
+
+
+/*
+NEU:
+Anzeige aus iPhone-Teilen-Funktion importieren.
+*/
+
+async function importSharedAd(){
+
+const sharedUrl=getSharedUrl();
+
+if(!sharedUrl){
+return;
+}
+
+showShareStatus(
+"Anzeige wird zur Abholliste hinzugefügt …"
+);
+
+try{
+
+const result=await api(
+"/api/import/ad",
+{
+method:"POST",
+body:JSON.stringify({
+url:sharedUrl
+})
+}
+);
+
+clearSharedUrl();
+
+await loadAll();
+
+showShareStatus(
+"✓ Anzeige wurde zur Abholliste hinzugefügt."
+);
+
+if(result && result.id){
+focusAd(result.id);
+}
+
+}catch(error){
+
+clearSharedUrl();
+
+showShareStatus(
+"Import fehlgeschlagen: "+error.message,
+true
+);
+
+}
+
 }
 
 
 async function boot(){
 
-    try{
+try{
 
-        cfg = await fetch("/api/config").then(
-            response => response.json()
-        );
+cfg=await fetch(
+"/api/config"
+).then(
+response=>response.json()
+);
 
-        if(cfg.needs_pin){
-            $("login").classList.remove("hidden");
-            return;
-        }
+if(cfg.needs_pin){
 
-        await loadAll();
+$("login").classList.remove("hidden");
 
-    }catch(error){
+return;
+}
 
-        console.error(error);
+await loadAll();
 
-        $("adlist").innerHTML =
-            '<div class="small">' +
-            esc(error.message) +
-            '</div>';
-    }
+/*
+Nach normalem Start prüfen,
+ob der Kurzbefehl eine Anzeige übergeben hat.
+*/
+
+await importSharedAd();
+
+}catch(error){
+
+console.error(error);
+
+$("adlist").innerHTML=
+'<div class="small">'+
+esc(error.message)+
+'</div>';
+
+}
+
 }
 
 
 async function login(){
 
-    try{
+try{
 
-        await api(
-            "/api/login",
-            {
-                method:"POST",
-                body:JSON.stringify({
-                    pin:$("pin").value
-                })
-            }
-        );
+await api(
+"/api/login",
+{
+method:"POST",
+body:JSON.stringify({
+pin:$("pin").value
+})
+}
+);
 
-        $("login").classList.add("hidden");
+$("login").classList.add("hidden");
 
-        await loadAll();
+await loadAll();
 
-    }catch(error){
+/*
+Auch nach PIN-Eingabe einen eventuell
+übergebenen Link verarbeiten.
+*/
 
-        alert(error.message);
-    }
+await importSharedAd();
+
+}catch(error){
+
+alert(error.message);
+
+}
+
 }
 
 
 async function loadAll(){
 
-    try{
+try{
 
-        ads = await api("/api/ads");
-        searches = await api("/api/searches");
+ads=await api("/api/ads");
+searches=await api("/api/searches");
 
-        renderAds();
-        renderSearches();
-        updateSetupStatus();
+renderAds();
+renderSearches();
+updateSetupStatus();
 
-        setTimeout(
-            () => map.invalidateSize(),
-            150
-        );
+setTimeout(
+()=>map.invalidateSize(),
+150
+);
 
-    }catch(error){
+}catch(error){
 
-        console.error(error);
+console.error(error);
 
-        $("adlist").innerHTML =
-            '<div class="small">' +
-            esc(error.message) +
-            '</div>';
-    }
+$("adlist").innerHTML=
+'<div class="small">'+
+esc(error.message)+
+'</div>';
+
+}
+
 }
 
 
-document.querySelectorAll(".tab").forEach(button => {
+document.querySelectorAll(".tab").forEach(button=>{
 
-    button.addEventListener(
-        "click",
-        () => {
+button.addEventListener(
+"click",
+()=>{
 
-            document.querySelectorAll(".tab").forEach(
-                element => element.classList.remove("active")
-            );
+document.querySelectorAll(".tab").forEach(
+element=>element.classList.remove("active")
+);
 
-            document.querySelectorAll(".pane").forEach(
-                element => element.classList.add("hidden")
-            );
+document.querySelectorAll(".pane").forEach(
+element=>element.classList.add("hidden")
+);
 
-            button.classList.add("active");
+button.classList.add("active");
 
-            const pane = $(button.dataset.tab);
+const pane=$(button.dataset.tab);
 
-            if(pane){
-                pane.classList.remove("hidden");
-            }
+if(pane){
+pane.classList.remove("hidden");
+}
 
-            setTimeout(
-                () => map.invalidateSize(),
-                100
-            );
-        }
-    );
+setTimeout(
+()=>map.invalidateSize(),
+100
+);
+
+}
+);
+
 });
 
 
 function renderAds(){
 
-    markers.forEach(
-        marker => map.removeLayer(marker)
-    );
+markers.forEach(
+marker=>map.removeLayer(marker)
+);
 
-    markers = [];
+markers=[];
 
-    const filterText =
-        $("filter")
-        .value
-        .trim()
-        .toLowerCase();
+const filterText=
+$("filter").value.trim().toLowerCase();
 
-    const visible = ads.filter(ad => {
+const visible=ads.filter(ad=>{
 
-        const text = [
-            ad.title,
-            ad.place,
-            ad.price_text
-        ]
-        .join(" ")
-        .toLowerCase();
+const text=[
+ad.title,
+ad.place,
+ad.price_text
+]
+.join(" ")
+.toLowerCase();
 
-        return text.includes(filterText);
-    });
+return text.includes(filterText);
 
-    $("count").textContent =
-        visible.length + " Anzeigen";
+});
+
+$("count").textContent=
+visible.length+" Anzeigen";
 
 
-    if(!visible.length){
+if(!visible.length){
 
-        $("adlist").innerHTML =
-            '<div class="small">Noch keine Anzeigen.</div>';
+$("adlist").innerHTML=
+'<div class="small">Noch keine Anzeigen.</div>';
 
-    }else{
+}else{
 
-        $("adlist").innerHTML =
-            visible.map(ad => {
+$("adlist").innerHTML=
+visible.map(ad=>{
 
-                const checked =
-                    ad.selected
-                        ? "checked"
-                        : "";
+const checked=
+ad.selected ? "checked" : "";
 
-                const faded =
-                    ad.deleted
-                        ? "inactive"
-                        : "";
+const faded=
+ad.deleted ? "inactive" : "";
 
-                const url =
-                    esc(ad.url || "");
+const url=esc(ad.url||"");
 
-                return `
-                <div class="item ${faded}">
+return `
+<div class="item ${faded}">
 
-                    <div class="row">
+<div class="row">
 
-                        <label style="flex:0">
+<label style="flex:0">
+<input
+type="checkbox"
+data-select-id="${ad.id}"
+${checked}
+style="width:auto"
+>
+</label>
 
-                            <input
-                                type="checkbox"
-                                data-select-id="${ad.id}"
-                                ${checked}
-                                style="width:auto"
-                            >
+<div>
 
-                        </label>
+<h3>
+${esc(ad.title||"Ohne Titel")}
+</h3>
 
-                        <div>
+<div class="meta">
 
-                            <h3>
-                                ${esc(ad.title || "Ohne Titel")}
-                            </h3>
+<span class="price">
+${esc(ad.price_text||"")}
+</span>
 
-                            <div class="meta">
+· ${esc(ad.place||"Ort unbekannt")}
 
-                                <span class="price">
-                                    ${esc(ad.price_text || "")}
-                                </span>
+·
 
-                                · ${esc(ad.place || "Ort unbekannt")}
+<span class="badge">
+${esc(ad.source||"")}
+</span>
 
-                                ·
+</div>
 
-                                <span class="badge">
-                                    ${esc(ad.source || "")}
-                                </span>
+</div>
 
-                            </div>
+</div>
 
-                        </div>
+<div class="toolbar">
 
-                    </div>
+<button
+class="alt"
+data-map-id="${ad.id}"
+>
+Karte
+</button>
 
-                    <div class="toolbar">
+<button
+class="alt"
+data-open-url="${url}"
+>
+Kleinanzeigen
+</button>
 
-                        <button
-                            class="alt"
-                            data-map-id="${ad.id}"
-                        >
-                            Karte
-                        </button>
+<button
+class="warn"
+data-delete-id="${ad.id}"
+>
+Löschen
+</button>
 
-                        <button
-                            class="alt"
-                            data-open-url="${url}"
-                        >
-                            Kleinanzeigen
-                        </button>
+</div>
 
-                        <button
-                            class="warn"
-                            data-delete-id="${ad.id}"
-                        >
-                            Löschen
-                        </button>
+</div>
+`;
 
-                    </div>
+}).join("");
 
-                </div>
-                `;
-            }).join("");
-    }
+}
 
 
-    document
-    .querySelectorAll("[data-select-id]")
-    .forEach(element => {
+document
+.querySelectorAll("[data-select-id]")
+.forEach(element=>{
 
-        element.addEventListener(
-            "change",
-            () => {
+element.addEventListener(
+"change",
+()=>{
 
-                selectAd(
-                    Number(element.dataset.selectId),
-                    element.checked
-                );
-            }
-        );
-    });
+selectAd(
+Number(element.dataset.selectId),
+element.checked
+);
 
+}
+);
 
-    document
-    .querySelectorAll("[data-map-id]")
-    .forEach(element => {
-
-        element.addEventListener(
-            "click",
-            () => {
-
-                focusAd(
-                    Number(element.dataset.mapId)
-                );
-            }
-        );
-    });
+});
 
 
-    document
-    .querySelectorAll("[data-open-url]")
-    .forEach(element => {
+document
+.querySelectorAll("[data-map-id]")
+.forEach(element=>{
 
-        element.addEventListener(
-            "click",
-            () => {
+element.addEventListener(
+"click",
+()=>{
 
-                const url =
-                    element.dataset.openUrl;
+focusAd(
+Number(element.dataset.mapId)
+);
 
-                if(url){
-                    window.open(
-                        url,
-                        "_blank"
-                    );
-                }
-            }
-        );
-    });
+}
+);
+
+});
 
 
-    document
-    .querySelectorAll("[data-delete-id]")
-    .forEach(element => {
+document
+.querySelectorAll("[data-open-url]")
+.forEach(element=>{
 
-        element.addEventListener(
-            "click",
-            () => {
+element.addEventListener(
+"click",
+()=>{
 
-                deleteAd(
-                    Number(element.dataset.deleteId)
-                );
-            }
-        );
-    });
+const url=element.dataset.openUrl;
+
+if(url){
+window.open(url,"_blank");
+}
+
+}
+);
+
+});
 
 
-    visible.forEach(ad => {
+document
+.querySelectorAll("[data-delete-id]")
+.forEach(element=>{
 
-        const lat = Number(ad.lat);
-        const lon = Number(ad.lon);
+element.addEventListener(
+"click",
+()=>{
 
-        if(
-            !Number.isFinite(lat) ||
-            !Number.isFinite(lon)
-        ){
-            return;
-        }
+deleteAd(
+Number(element.dataset.deleteId)
+);
 
-        const marker =
-            L.marker(
-                [lat,lon],
-                {
-                    opacity:
-                        ad.deleted
-                            ? 0.45
-                            : 1,
+}
+);
 
-                    icon:
-                        pinIcon(
-                            isVehicle(ad)
-                        )
-                }
-            )
-            .addTo(map);
+});
 
-        marker.bindPopup(
-            "<b>" +
-            esc(ad.title || "") +
-            "</b><br>" +
-            esc(ad.price_text || "") +
-            "<br>" +
-            esc(ad.place || "")
-        );
 
-        marker._aid = ad.id;
+visible.forEach(ad=>{
 
-        markers.push(marker);
-    });
+const lat=Number(ad.lat);
+const lon=Number(ad.lon);
+
+if(
+!Number.isFinite(lat) ||
+!Number.isFinite(lon)
+){
+return;
+}
+
+const marker=L.marker(
+[lat,lon],
+{
+opacity:
+ad.deleted ? 0.45 : 1,
+
+icon:
+pinIcon(
+isVehicle(ad)
+)
+}
+)
+.addTo(map);
+
+marker.bindPopup(
+"<b>"+
+esc(ad.title||"")+
+"</b><br>"+
+esc(ad.price_text||"")+
+"<br>"+
+esc(ad.place||"")
+);
+
+marker._aid=ad.id;
+
+markers.push(marker);
+
+});
+
 }
 
 
 async function selectAd(id,value){
 
-    try{
+try{
 
-        await api(
-            "/api/ads/" + id,
-            {
-                method:"PATCH",
-                body:JSON.stringify({
-                    selected:value ? 1 : 0
-                })
-            }
-        );
+await api(
+"/api/ads/"+id,
+{
+method:"PATCH",
+body:JSON.stringify({
+selected:value ? 1 : 0
+})
+}
+);
 
-        const ad =
-            ads.find(
-                item =>
-                    Number(item.id) === Number(id)
-            );
+const ad=ads.find(
+item=>Number(item.id)===Number(id)
+);
 
-        if(ad){
-            ad.selected =
-                value
-                    ? 1
-                    : 0;
-        }
+if(ad){
+ad.selected=value ? 1 : 0;
+}
 
-    }catch(error){
+}catch(error){
 
-        alert(error.message);
-    }
+alert(error.message);
+
+}
+
 }
 
 
 async function selectVisible(){
 
-    const filterText =
-        $("filter")
-        .value
-        .trim()
-        .toLowerCase();
+const filterText=
+$("filter").value.trim().toLowerCase();
 
-    const visible =
-        ads.filter(ad => {
+const visible=ads.filter(ad=>{
 
-            return [
-                ad.title,
-                ad.place,
-                ad.price_text
-            ]
-            .join(" ")
-            .toLowerCase()
-            .includes(filterText);
-        });
+return [
+ad.title,
+ad.place,
+ad.price_text
+]
+.join(" ")
+.toLowerCase()
+.includes(filterText);
 
-    try{
+});
 
-        for(const ad of visible){
+try{
 
-            await api(
-                "/api/ads/" + ad.id,
-                {
-                    method:"PATCH",
-                    body:JSON.stringify({
-                        selected:1
-                    })
-                }
-            );
-        }
+for(const ad of visible){
 
-        await loadAll();
+await api(
+"/api/ads/"+ad.id,
+{
+method:"PATCH",
+body:JSON.stringify({
+selected:1
+})
+}
+);
 
-    }catch(error){
+}
 
-        alert(error.message);
-    }
+await loadAll();
+
+}catch(error){
+
+alert(error.message);
+
+}
+
 }
 
 
 function focusAd(id){
 
-    const ad =
-        ads.find(
-            item =>
-                Number(item.id) === Number(id)
-        );
+const ad=ads.find(
+item=>Number(item.id)===Number(id)
+);
 
-    if(!ad){
-        return;
-    }
+if(!ad){
+return;
+}
 
-    const lat = Number(ad.lat);
-    const lon = Number(ad.lon);
+const lat=Number(ad.lat);
+const lon=Number(ad.lon);
 
-    if(
-        Number.isFinite(lat) &&
-        Number.isFinite(lon)
-    ){
+if(
+Number.isFinite(lat) &&
+Number.isFinite(lon)
+){
 
-        map.setView(
-            [lat,lon],
-            13
-        );
-    }
+map.setView(
+[lat,lon],
+13
+);
+
+}
+
 }
 
 
 async function deleteAd(id){
 
-    if(
-        !confirm(
-            "Anzeige wirklich löschen?"
-        )
-    ){
-        return;
-    }
+if(
+!confirm(
+"Anzeige wirklich löschen?"
+)
+){
+return;
+}
 
-    try{
+try{
 
-        await api(
-            "/api/ads/" + id,
-            {
-                method:"DELETE"
-            }
-        );
+await api(
+"/api/ads/"+id,
+{
+method:"DELETE"
+}
+);
 
-        await loadAll();
+await loadAll();
 
-    }catch(error){
+}catch(error){
 
-        alert(error.message);
-    }
+alert(error.message);
+
+}
+
 }
 
 
 async function importAd(){
 
-    $("importmsg").textContent =
-        "Importiere…";
+$("importmsg").textContent=
+"Importiere…";
 
-    try{
+try{
 
-        const url =
-            extractKleinanzeigenUrl(
-                $("adurl").value
-            );
+const url=
+extractKleinanzeigenUrl(
+$("adurl").value
+);
 
-        if(
-            !url ||
-            !/^https?:\/\//i.test(url)
-        ){
-            throw new Error(
-                "Kein Kleinanzeigen-Link gefunden."
-            );
-        }
+if(
+!url ||
+!/^https?:\/\//i.test(url)
+){
 
-        const result =
-            await api(
-                "/api/import/ad",
-                {
-                    method:"POST",
-                    body:JSON.stringify({
-                        url:url
-                    })
-                }
-            );
+throw new Error(
+"Kein Kleinanzeigen-Link gefunden."
+);
 
-        $("importmsg").textContent =
-            "Anzeige importiert.";
+}
 
-        $("adurl").value = "";
+const result=await api(
+"/api/import/ad",
+{
+method:"POST",
+body:JSON.stringify({
+url:url
+})
+}
+);
 
-        await loadAll();
+$("importmsg").textContent=
+"Anzeige importiert.";
 
-        if(result.id){
-            focusAd(result.id);
-        }
+$("adurl").value="";
 
-    }catch(error){
+await loadAll();
 
-        $("importmsg").textContent =
-            error.message;
-    }
+if(result.id){
+focusAd(result.id);
+}
+
+}catch(error){
+
+$("importmsg").textContent=
+error.message;
+
+}
+
 }
 
 
 async function manualAd(){
 
-    try{
+try{
 
-        await api(
-            "/api/ads/manual",
-            {
-                method:"POST",
-                body:JSON.stringify({
+await api(
+"/api/ads/manual",
+{
+method:"POST",
+body:JSON.stringify({
 
-                    title:
-                        $("mtitle").value,
+title:$("mtitle").value,
 
-                    price_text:
-                        $("mprice").value,
+price_text:$("mprice").value,
 
-                    place:
-                        $("mplace").value,
+place:$("mplace").value,
 
-                    url:
-                        extractKleinanzeigenUrl(
-                            $("murl").value
-                        )
-                })
-            }
-        );
+url:
+extractKleinanzeigenUrl(
+$("murl").value
+)
 
-        $("mtitle").value = "";
-        $("mprice").value = "";
-        $("mplace").value = "";
-        $("murl").value = "";
+})
+}
+);
 
-        await loadAll();
+$("mtitle").value="";
+$("mprice").value="";
+$("mplace").value="";
+$("murl").value="";
 
-        alert(
-            "Anzeige gespeichert."
-        );
+await loadAll();
 
-    }catch(error){
+alert(
+"Anzeige gespeichert."
+);
 
-        alert(error.message);
-    }
+}catch(error){
+
+alert(error.message);
+
+}
+
 }
 
 
 async function addSearch(){
 
-    try{
+try{
 
-        const url =
-            extractKleinanzeigenUrl(
-                $("surl").value
-            );
+const url=
+extractKleinanzeigenUrl(
+$("surl").value
+);
 
-        if(!url){
-            throw new Error(
-                "Bitte einen Suchlink einfügen."
-            );
-        }
+if(!url){
 
-        const search =
-            await api(
-                "/api/searches",
-                {
-                    method:"POST",
-                    body:JSON.stringify({
+throw new Error(
+"Bitte einen Suchlink einfügen."
+);
 
-                        url:url,
+}
 
-                        name:
-                            $("sname")
-                            .value
-                            .trim()
-                    })
-                }
-            );
+const search=await api(
+"/api/searches",
+{
+method:"POST",
+body:JSON.stringify({
 
-        $("surl").value = "";
-        $("sname").value = "";
+url:url,
 
-        await loadAll();
+name:
+$("sname").value.trim()
 
-        if(search.id){
+})
+}
+);
 
-            await syncSearch(
-                search.id
-            );
-        }
+$("surl").value="";
+$("sname").value="";
 
-    }catch(error){
+await loadAll();
 
-        alert(error.message);
-    }
+if(search.id){
+await syncSearch(search.id);
+}
+
+}catch(error){
+
+alert(error.message);
+
+}
+
 }
 
 
 function renderSearches(){
 
-    if(!searches.length){
+if(!searches.length){
 
-        $("searches").innerHTML =
-            '<div class="small">Noch keine gespeicherten Suchen.</div>';
+$("searches").innerHTML=
+'<div class="small">Noch keine gespeicherten Suchen.</div>';
 
-        return;
-    }
+return;
+}
 
-    $("searches").innerHTML =
-        searches.map(search => {
+$("searches").innerHTML=
+searches.map(search=>{
 
-            return `
-            <div class="item">
+return `
+<div class="item">
 
-                <h3>
-                    ${esc(search.name || "Suche")}
-                </h3>
+<h3>
+${esc(search.name||"Suche")}
+</h3>
 
-                <div class="meta">
-                    ${esc(search.query || "")}
-                </div>
+<div class="meta">
+${esc(search.query||"")}
+</div>
 
-                <div class="toolbar">
+<div class="toolbar">
 
-                    <button
-                        data-sync-search="${search.id}"
-                    >
-                        Synchronisieren
-                    </button>
+<button
+data-sync-search="${search.id}"
+>
+Synchronisieren
+</button>
 
-                    <button
-                        class="warn"
-                        data-delete-search="${search.id}"
-                    >
-                        Löschen
-                    </button>
+<button
+class="warn"
+data-delete-search="${search.id}"
+>
+Löschen
+</button>
 
-                </div>
+</div>
 
-            </div>
-            `;
-        }).join("");
+</div>
+`;
 
-
-    document
-    .querySelectorAll("[data-sync-search]")
-    .forEach(button => {
-
-        button.addEventListener(
-            "click",
-            () => {
-
-                syncSearch(
-                    Number(button.dataset.syncSearch)
-                );
-            }
-        );
-    });
+}).join("");
 
 
-    document
-    .querySelectorAll("[data-delete-search]")
-    .forEach(button => {
+document
+.querySelectorAll("[data-sync-search]")
+.forEach(button=>{
 
-        button.addEventListener(
-            "click",
-            () => {
+button.addEventListener(
+"click",
+()=>{
 
-                deleteSearch(
-                    Number(button.dataset.deleteSearch)
-                );
-            }
-        );
-    });
+syncSearch(
+Number(button.dataset.syncSearch)
+);
+
+}
+);
+
+});
+
+
+document
+.querySelectorAll("[data-delete-search]")
+.forEach(button=>{
+
+button.addEventListener(
+"click",
+()=>{
+
+deleteSearch(
+Number(button.dataset.deleteSearch)
+);
+
+}
+);
+
+});
+
 }
 
 
 async function syncSearch(id){
 
-    try{
+try{
 
-        const result =
-            await api(
-                "/api/searches/" +
-                id +
-                "/sync",
-                {
-                    method:"POST",
-                    body:JSON.stringify({
-                        size:20
-                    })
-                }
-            );
+const result=await api(
+"/api/searches/"+id+"/sync",
+{
+method:"POST",
+body:JSON.stringify({
+size:20
+})
+}
+);
 
-        await loadAll();
+await loadAll();
 
-        alert(
-            (result.count || 0) +
-            " Treffer synchronisiert."
-        );
+alert(
+(result.count||0)+
+" Treffer synchronisiert."
+);
 
-    }catch(error){
+}catch(error){
 
-        alert(error.message);
-    }
+alert(error.message);
+
+}
+
 }
 
 
 async function deleteSearch(id){
 
-    if(
-        !confirm(
-            "Gespeicherte Suche löschen?"
-        )
-    ){
-        return;
-    }
+if(
+!confirm(
+"Gespeicherte Suche löschen?"
+)
+){
+return;
+}
 
-    try{
+try{
 
-        await api(
-            "/api/searches/" + id,
-            {
-                method:"DELETE"
-            }
-        );
+await api(
+"/api/searches/"+id,
+{
+method:"DELETE"
+}
+);
 
-        await loadAll();
+await loadAll();
 
-    }catch(error){
+}catch(error){
 
-        alert(error.message);
-    }
+alert(error.message);
+
+}
+
 }
 
 
 async function refreshAll(){
 
-    try{
+try{
 
-        const result =
-            await api(
-                "/api/refresh",
-                {
-                    method:"POST",
-                    body:"{}"
-                }
-            );
+const result=await api(
+"/api/refresh",
+{
+method:"POST",
+body:"{}"
+}
+);
 
-        await loadAll();
+await loadAll();
 
-        let text =
-            (result.checked || 0) +
-            " Anzeigen geprüft.";
+let text=
+(result.checked||0)+
+" Anzeigen geprüft.";
 
-        if(result.removed){
+if(result.removed){
 
-            text +=
-                " " +
-                result.removed +
-                " nicht mehr verfügbar.";
-        }
+text+=
+" "+
+result.removed+
+" nicht mehr verfügbar.";
 
-        alert(text);
+}
 
-    }catch(error){
+alert(text);
 
-        alert(error.message);
-    }
+}catch(error){
+
+alert(error.message);
+
+}
+
 }
 
 
 async function planRoute(){
 
-    const ids =
-        ads
-        .filter(
-            ad =>
-                ad.selected &&
-                !ad.deleted
-        )
-        .map(
-            ad => ad.id
-        );
+const ids=
+ads
+.filter(
+ad=>ad.selected && !ad.deleted
+)
+.map(
+ad=>ad.id
+);
 
-    try{
+try{
 
-        const result =
-            await api(
-                "/api/route",
-                {
-                    method:"POST",
-                    body:JSON.stringify({
+const result=await api(
+"/api/route",
+{
+method:"POST",
+body:JSON.stringify({
 
-                        start:
-                            $("rstart").value,
+start:$("rstart").value,
 
-                        end:
-                            $("rend").value,
+end:$("rend").value,
 
-                        ad_ids:
-                            ids
-                    })
-                }
-            );
+ad_ids:ids
 
-        if(routeLayer){
+})
+}
+);
 
-            map.removeLayer(
-                routeLayer
-            );
-        }
+if(routeLayer){
 
-        routeLayer =
-            L.geoJSON(
-                result.geometry
-            ).addTo(map);
+map.removeLayer(
+routeLayer
+);
 
-        if(
-            routeLayer.getBounds().isValid()
-        ){
+}
 
-            map.fitBounds(
-                routeLayer
-                .getBounds()
-                .pad(0.1)
-            );
-        }
+routeLayer=
+L.geoJSON(
+result.geometry
+).addTo(map);
 
-        $("routebox")
-        .classList
-        .remove("hidden");
+if(
+routeLayer.getBounds().isValid()
+){
 
-        $("routebox").innerHTML =
-            "<b>" +
-            esc(result.distance_km || "") +
-            " km · ca. " +
-            esc(result.duration_min || "") +
-            " min</b>" +
+map.fitBounds(
+routeLayer
+.getBounds()
+.pad(0.1)
+);
 
-            "<ol>" +
+}
 
-            (result.order || [])
-            .map(
-                item =>
-                    "<li>" +
-                    esc(item.label || "") +
-                    "</li>"
-            )
-            .join("") +
+$("routebox")
+.classList
+.remove("hidden");
 
-            "</ol>";
+$("routebox").innerHTML=
+"<b>"+
+esc(result.distance_km||"")+
+" km · ca. "+
+esc(result.duration_min||"")+
+" min</b>"+
+"<ol>"+
+(result.order||[])
+.map(
+item=>
+"<li>"+
+esc(item.label||"")+
+"</li>"
+)
+.join("")+
+"</ol>";
 
-    }catch(error){
+}catch(error){
 
-        alert(error.message);
-    }
+alert(error.message);
+
+}
+
 }
 
 
 async function updateSetupStatus(){
 
-    try{
+try{
 
-        const settings =
-            await api(
-                "/api/settings"
-            );
+const settings=
+await api(
+"/api/settings"
+);
 
-        $("setupstatus").textContent =
-            "Direktabruf: " +
-            (
-                settings.direct_fetch
-                    ? "an"
-                    : "aus"
-            ) +
-            " · API-Fallback: " +
-            (
-                settings.api_fallback
-                    ? "an"
-                    : "aus"
-            ) +
-            " · PIN: " +
-            (
-                settings.pin_set
-                    ? "gesetzt"
-                    : "aus"
-            );
+$("setupstatus").textContent=
+"Direktabruf: "+
+(
+settings.direct_fetch
+? "an"
+: "aus"
+)+
+" · API-Fallback: "+
+(
+settings.api_fallback
+? "an"
+: "aus"
+)+
+" · PIN: "+
+(
+settings.pin_set
+? "gesetzt"
+: "aus"
+);
 
-    }catch(error){
+}catch(error){
 
-        console.log(error);
-    }
+console.log(error);
+
+}
+
 }
 
 
 async function saveSettings(){
 
-    try{
+try{
 
-        const body = {};
+const body={};
 
-        const apiKey =
-            $("apikey")
-            .value
-            .trim();
+const apiKey=
+$("apikey").value.trim();
 
-        const newPin =
-            $("newpin")
-            .value
-            .trim();
+const newPin=
+$("newpin").value.trim();
 
-        if(apiKey){
+if(apiKey){
+body.klaz_api_key=apiKey;
+}
 
-            body.klaz_api_key =
-                apiKey;
-        }
+if(newPin){
 
-        if(newPin){
+if(newPin.length<4){
 
-            if(newPin.length < 4){
+throw new Error(
+"PIN muss mindestens 4 Zeichen haben."
+);
 
-                throw new Error(
-                    "PIN muss mindestens 4 Zeichen haben."
-                );
-            }
+}
 
-            body.app_pin =
-                newPin;
-        }
+body.app_pin=newPin;
 
-        await api(
-            "/api/settings",
-            {
-                method:"POST",
-                body:JSON.stringify(
-                    body
-                )
-            }
-        );
+}
 
-        $("apikey").value = "";
-        $("newpin").value = "";
+await api(
+"/api/settings",
+{
+method:"POST",
+body:JSON.stringify(body)
+}
+);
 
-        await updateSetupStatus();
+$("apikey").value="";
+$("newpin").value="";
 
-        alert(
-            "Einstellungen gespeichert."
-        );
+await updateSetupStatus();
 
-    }catch(error){
+alert(
+"Einstellungen gespeichert."
+);
 
-        alert(error.message);
-    }
+}catch(error){
+
+alert(error.message);
+
+}
+
 }
 
 
-$("loginButton").addEventListener("click",login);
-$("refreshButton").addEventListener("click",refreshAll);
-$("selectAllButton").addEventListener("click",selectVisible);
-$("filter").addEventListener("input",renderAds);
-$("importButton").addEventListener("click",importAd);
-$("manualButton").addEventListener("click",manualAd);
-$("saveSearchButton").addEventListener("click",addSearch);
-$("routeButton").addEventListener("click",planRoute);
-$("settingsButton").addEventListener("click",saveSettings);
+$("loginButton").addEventListener(
+"click",
+login
+);
+
+$("refreshButton").addEventListener(
+"click",
+refreshAll
+);
+
+$("selectAllButton").addEventListener(
+"click",
+selectVisible
+);
+
+$("filter").addEventListener(
+"input",
+renderAds
+);
+
+$("importButton").addEventListener(
+"click",
+importAd
+);
+
+$("manualButton").addEventListener(
+"click",
+manualAd
+);
+
+$("saveSearchButton").addEventListener(
+"click",
+addSearch
+);
+
+$("routeButton").addEventListener(
+"click",
+planRoute
+);
+
+$("settingsButton").addEventListener(
+"click",
+saveSettings
+);
 
 $("pin").addEventListener(
-    "keydown",
-    event => {
+"keydown",
+event=>{
 
-        if(event.key === "Enter"){
-            login();
-        }
-    }
+if(event.key==="Enter"){
+login();
+}
+
+}
 );
 
 
 if(
-    "serviceWorker" in navigator
+"serviceWorker" in navigator
 ){
 
-    navigator
-    .serviceWorker
-    .register("/sw.js")
-    .catch(
-        error =>
-            console.log(error)
-    );
+navigator
+.serviceWorker
+.register("/sw.js")
+.catch(
+error=>console.log(error)
+);
+
 }
 
 boot();
