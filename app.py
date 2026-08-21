@@ -322,7 +322,7 @@ def geocode(q):
 
 
 # ------------------------------------------------------------
-# API-DIENST â NUR OPTIONAL
+# API-DIENST Ã¢ÂÂ NUR OPTIONAL
 # ------------------------------------------------------------
 
 def klaz_get(path, params=None):
@@ -515,7 +515,7 @@ def parse_html_ad(url, html, source="shortcut-html"):
                 except Exception:
                     pass
 
-                symbol = "â¬" if currency == "EUR" else currency
+                symbol = "Ã¢ÂÂ¬" if currency == "EUR" else currency
                 price_text = f"{price} {symbol}"
 
         address = obj.get("address")
@@ -582,7 +582,7 @@ def parse_html_ad(url, html, source="shortcut-html"):
                     strip=True
                 )
 
-                if "â¬" in txt:
+                if "Ã¢ÂÂ¬" in txt:
                     price_text = txt
                     break
 
@@ -641,7 +641,7 @@ def parse_html_ad(url, html, source="shortcut-html"):
 
 
 # ------------------------------------------------------------
-# DIREKTER SERVERABRUF â OPTIONAL
+# DIREKTER SERVERABRUF Ã¢ÂÂ OPTIONAL
 # ------------------------------------------------------------
 
 def request_kleinanzeigen(url):
@@ -671,13 +671,13 @@ def page_is_removed(response, soup):
     ).lower()
 
     removed_signals = [
-        "anzeige ist nicht mehr verfÃ¼gbar",
-        "diese anzeige ist nicht mehr verfÃ¼gbar",
-        "anzeige wurde gelÃ¶scht",
-        "diese anzeige wurde gelÃ¶scht",
+        "anzeige ist nicht mehr verfÃÂ¼gbar",
+        "diese anzeige ist nicht mehr verfÃÂ¼gbar",
+        "anzeige wurde gelÃÂ¶scht",
+        "diese anzeige wurde gelÃÂ¶scht",
         "anzeige existiert nicht mehr",
-        "angebot ist nicht mehr verfÃ¼gbar",
-        "dieses angebot ist nicht mehr verfÃ¼gbar"
+        "angebot ist nicht mehr verfÃÂ¼gbar",
+        "dieses angebot ist nicht mehr verfÃÂ¼gbar"
     ]
 
     return any(
@@ -868,7 +868,7 @@ def normalize_api_ad(
 
         if amount is not None:
             price_text = (
-                f"{amount:,.0f} â¬"
+                f"{amount:,.0f} Ã¢ÂÂ¬"
                 .replace(",", ".")
             )
 
@@ -1176,13 +1176,42 @@ def list_ads():
 @app.post("/api/ads/manual")
 @auth_required
 def manual_ad():
-    x = request.json or {}
+    # iOS-Kurzbefehle kÃ¶nnen den geteilten Inhalt als reinen Text,
+    # URL, Liste oder Formularfeld Ã¼bermitteln. Deshalb lesen wir
+    # den Wert tolerant ein und ziehen die erste enthaltene URL heraus.
+    x = request.get_json(silent=True) or {}
 
-    url = (
-        clean_url(x.get("url", ""))
-        if x.get("url")
-        else ""
+    if not x:
+        x = request.form.to_dict()
+
+    raw_url = (
+        x.get("url")
+        or x.get("text")
+        or x.get("input")
+        or ""
     )
+
+    if isinstance(raw_url, (list, tuple)):
+        raw_url = raw_url[0] if raw_url else ""
+
+    if isinstance(raw_url, dict):
+        raw_url = (
+            raw_url.get("url")
+            or raw_url.get("text")
+            or ""
+        )
+
+    raw_url = str(raw_url).strip()
+    url = clean_url(extract_first_url(raw_url) or raw_url)
+
+    if not url or not extract_ad_id(url):
+        return jsonify(
+            {
+                "error":
+                    "Kein gÃ¼ltiger Kleinanzeigen-Link empfangen.",
+                "received_keys": sorted(x.keys())
+            }
+        ), 400
 
     aid = extract_ad_id(url)
 
@@ -1269,7 +1298,7 @@ def import_html():
 
 
 # ------------------------------------------------------------
-# KLASSISCHER IMPORT â NUR OPTIONAL
+# KLASSISCHER IMPORT Ã¢ÂÂ NUR OPTIONAL
 # ------------------------------------------------------------
 
 @app.post("/api/import/ad")
@@ -1351,7 +1380,7 @@ def import_ad():
                 direct_error
                 or (
                     "Serverabruf deaktiviert. "
-                    "Bitte Ã¼ber den iPhone-"
+                    "Bitte ÃÂ¼ber den iPhone-"
                     "Kurzbefehl importieren."
                 ),
             "can_manual": True,
@@ -1423,7 +1452,7 @@ def patch_ad(rid):
 
 
 # ------------------------------------------------------------
-# STATUS-PRÃFUNG
+# STATUS-PRÃÂFUNG
 # ------------------------------------------------------------
 
 @app.post("/api/refresh")
@@ -1437,7 +1466,7 @@ def refresh_ads():
                 "blocked": 0,
                 "errors": [],
                 "message":
-                    "Direkte StatusprÃ¼fung ist "
+                    "Direkte StatusprÃÂ¼fung ist "
                     "deaktiviert."
             }
         )
@@ -1449,7 +1478,7 @@ def refresh_ads():
             "blocked": 0,
             "errors": [],
             "message":
-                "Direkte StatusprÃ¼fung aktuell "
+                "Direkte StatusprÃÂ¼fung aktuell "
                 "nicht verwendet."
         }
     )
@@ -1720,7 +1749,7 @@ def route():
             {
                 "error":
                     "Mindestens eine "
-                    "Abholung auswÃ¤hlen."
+                    "Abholung auswÃÂ¤hlen."
             }
         ), 400
 
