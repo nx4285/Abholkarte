@@ -1304,11 +1304,25 @@ def import_html():
 @app.post("/api/import/ad")
 @auth_required
 def import_ad():
-    url = (
-        (request.json or {})
-        .get("url", "")
-        .strip()
-    )
+    x = request.get_json(silent=True) or {}
+
+    if not x:
+        x = request.form.to_dict()
+
+    raw_url = x.get("url") or x.get("text") or ""
+
+    if isinstance(raw_url, (list, tuple)):
+        raw_url = raw_url[0] if raw_url else ""
+
+    if isinstance(raw_url, dict):
+        raw_url = (
+            raw_url.get("url")
+            or raw_url.get("text")
+            or ""
+        )
+
+    raw_url = str(raw_url).strip()
+    url = clean_url(extract_first_url(raw_url) or raw_url)
 
     if not url:
         return jsonify(
