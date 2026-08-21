@@ -205,6 +205,7 @@ textarea{min-height:80px}
 
 .map-pin.red{background:#dc2626}
 .map-pin.blue{background:#2563eb}
+.map-pin.green{background:#16a34a}
 
 .map-pin span{
     display:block;
@@ -254,13 +255,13 @@ textarea{min-height:80px}
 <div class="card">
 <h2>Abholkarte</h2>
 <input id="pin" type="password" placeholder="PIN">
-<button id="loginButton">Öffnen</button>
+<button id="loginButton">Ãffnen</button>
 </div>
 </div>
 
 <header>
 <h1>Abholkarte</h1>
-<button class="alt" id="refreshButton">↻ Aktualisieren</button>
+<button class="alt" id="refreshButton">â» Aktualisieren</button>
 </header>
 
 <div class="shell">
@@ -271,7 +272,7 @@ textarea{min-height:80px}
 
 <div class="tabs">
 <button class="tab active" data-tab="ads">Anzeigen</button>
-<button class="tab" data-tab="add">Hinzufügen</button>
+<button class="tab" data-tab="add">HinzufÃ¼gen</button>
 <button class="tab" data-tab="search">Suchen</button>
 <button class="tab" data-tab="route">Route</button>
 <button class="tab" data-tab="settings">Einstellungen</button>
@@ -281,18 +282,18 @@ textarea{min-height:80px}
 
 <div class="card">
 <div class="row">
-<input id="filter" placeholder="Filtern…">
-<button class="alt" id="selectAllButton">Alle wählen</button>
+<input id="filter" placeholder="Filternâ¦">
+<button class="alt" id="selectAllButton">Alle wÃ¤hlen</button>
 </div>
 
 <div class="small">
 <span id="count">0 Anzeigen</span>
-· Autos rot, alles andere blau.
+Â· Autos rot, alles andere blau.
 </div>
 </div>
 
 <div id="adlist" class="card">
-<div class="small">Lade Anzeigen…</div>
+<div class="small">Lade Anzeigenâ¦</div>
 </div>
 
 </section>
@@ -304,7 +305,7 @@ textarea{min-height:80px}
 
 <textarea
 id="adurl"
-placeholder="Kleinanzeigen-Link oder kompletten Teilen-Text einfügen"
+placeholder="Kleinanzeigen-Link oder kompletten Teilen-Text einfÃ¼gen"
 ></textarea>
 
 <button id="importButton">Importieren</button>
@@ -313,7 +314,7 @@ placeholder="Kleinanzeigen-Link oder kompletten Teilen-Text einfügen"
 </div>
 
 <div class="card">
-<h3>Manuell hinzufügen</h3>
+<h3>Manuell hinzufÃ¼gen</h3>
 
 <input id="mtitle" placeholder="Titel">
 <input id="mprice" placeholder="Preis">
@@ -361,7 +362,7 @@ placeholder="Start, z. B. 97783 Karsbach"
 
 <input
 id="rend"
-placeholder="Ziel – leer = Rundfahrt"
+placeholder="Ziel â leer = Rundfahrt"
 >
 
 <button id="routeButton">
@@ -385,7 +386,7 @@ Optimale Reihenfolge berechnen
 <input
 id="apikey"
 type="password"
-placeholder="klaz_live_…"
+placeholder="klaz_live_â¦"
 >
 
 <label class="small">Neue App-PIN</label>
@@ -420,6 +421,7 @@ let searches=[];
 let markers=[];
 let routeLayer=null;
 let cfg={};
+let userLocationMarker=null;
 
 const $=id=>document.getElementById(id);
 
@@ -429,7 +431,7 @@ L.tileLayer(
 "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
 {
 maxZoom:19,
-attribution:"© OpenStreetMap"
+attribution:"Â© OpenStreetMap"
 }
 ).addTo(map);
 
@@ -514,8 +516,63 @@ Kategorie 216 = Autos.
 function isVehicle(ad){
 
 const url=String(ad.url||"");
+const source=String(ad.source||"").toLowerCase();
 
-return /-216-\d+(?:[/?]|$)/.test(url);
+return (
+/-216-\d+(?:[/?]|$)/.test(url) ||
+/mobile\.de/i.test(url) ||
+/autoscout24\.de/i.test(url) ||
+source==="mobile.de" ||
+source==="autoscout24"
+);
+
+}
+
+
+function showUserLocation(){
+
+if(!navigator.geolocation){
+return;
+}
+
+navigator.geolocation.getCurrentPosition(
+position=>{
+
+const point=[
+position.coords.latitude,
+position.coords.longitude
+];
+
+if(userLocationMarker){
+userLocationMarker.setLatLng(point);
+return;
+}
+
+userLocationMarker=L.marker(
+point,
+{
+icon:L.divIcon({
+className:"",
+html:'<div class="map-pin green"><span></span></div>',
+iconSize:[24,24],
+iconAnchor:[12,24],
+popupAnchor:[0,-24]
+})
+}
+).addTo(map);
+
+userLocationMarker.bindPopup(
+"<b>Mein Standort</b>"
+);
+
+},
+error=>console.log(error),
+{
+enableHighAccuracy:true,
+maximumAge:60000,
+timeout:15000
+}
+);
 
 }
 
@@ -539,7 +596,7 @@ popupAnchor:[0,-24]
 
 /*
 NEU:
-Übergebene Anzeige aus ?share= erkennen.
+Ãbergebene Anzeige aus ?share= erkennen.
 
 Beispiel:
 
@@ -630,7 +687,7 @@ return;
 }
 
 showShareStatus(
-"Anzeige wird zur Abholliste hinzugefügt …"
+"Anzeige wird zur Abholliste hinzugefÃ¼gt â¦"
 );
 
 try{
@@ -650,7 +707,7 @@ clearSharedUrl();
 await loadAll();
 
 showShareStatus(
-"✓ Anzeige wurde zur Abholliste hinzugefügt."
+"â Anzeige wurde zur Abholliste hinzugefÃ¼gt."
 );
 
 if(result && result.id){
@@ -691,8 +748,8 @@ return;
 await loadAll();
 
 /*
-Nach normalem Start prüfen,
-ob der Kurzbefehl eine Anzeige übergeben hat.
+Nach normalem Start prÃ¼fen,
+ob der Kurzbefehl eine Anzeige Ã¼bergeben hat.
 */
 
 await importSharedAd();
@@ -731,7 +788,7 @@ await loadAll();
 
 /*
 Auch nach PIN-Eingabe einen eventuell
-übergebenen Link verarbeiten.
+Ã¼bergebenen Link verarbeiten.
 */
 
 await importSharedAd();
@@ -881,9 +938,9 @@ ${esc(ad.title||"Ohne Titel")}
 ${esc(ad.price_text||"")}
 </span>
 
-· ${esc(ad.place||"Ort unbekannt")}
+Â· ${esc(ad.place||"Ort unbekannt")}
 
-·
+Â·
 
 <span class="badge">
 ${esc(ad.source||"")}
@@ -908,14 +965,14 @@ Karte
 class="alt"
 data-open-url="${url}"
 >
-Kleinanzeigen
+Anzeige
 </button>
 
 <button
 class="warn"
 data-delete-id="${ad.id}"
 >
-Löschen
+LÃ¶schen
 </button>
 
 </div>
@@ -1155,7 +1212,7 @@ async function deleteAd(id){
 
 if(
 !confirm(
-"Anzeige wirklich löschen?"
+"Anzeige wirklich lÃ¶schen?"
 )
 ){
 return;
@@ -1184,7 +1241,7 @@ alert(error.message);
 async function importAd(){
 
 $("importmsg").textContent=
-"Importiere…";
+"Importiereâ¦";
 
 try{
 
@@ -1292,7 +1349,7 @@ $("surl").value
 if(!url){
 
 throw new Error(
-"Bitte einen Suchlink einfügen."
+"Bitte einen Suchlink einfÃ¼gen."
 );
 
 }
@@ -1366,7 +1423,7 @@ Synchronisieren
 class="warn"
 data-delete-search="${search.id}"
 >
-Löschen
+LÃ¶schen
 </button>
 
 </div>
@@ -1449,7 +1506,7 @@ async function deleteSearch(id){
 
 if(
 !confirm(
-"Gespeicherte Suche löschen?"
+"Gespeicherte Suche lÃ¶schen?"
 )
 ){
 return;
@@ -1491,14 +1548,14 @@ await loadAll();
 
 let text=
 (result.checked||0)+
-" Anzeigen geprüft.";
+" Anzeigen geprÃ¼ft.";
 
 if(result.removed){
 
 text+=
 " "+
 result.removed+
-" nicht mehr verfügbar.";
+" nicht mehr verfÃ¼gbar.";
 
 }
 
@@ -1574,7 +1631,7 @@ $("routebox")
 $("routebox").innerHTML=
 "<b>"+
 esc(result.distance_km||"")+
-" km · ca. "+
+" km Â· ca. "+
 esc(result.duration_min||"")+
 " min</b>"+
 "<ol>"+
@@ -1613,13 +1670,13 @@ settings.direct_fetch
 ? "an"
 : "aus"
 )+
-" · API-Fallback: "+
+" Â· API-Fallback: "+
 (
 settings.api_fallback
 ? "an"
 : "aus"
 )+
-" · PIN: "+
+" Â· PIN: "+
 (
 settings.pin_set
 ? "gesetzt"
@@ -1761,7 +1818,52 @@ error=>console.log(error)
 
 }
 
+/*
+Liste automatisch neu laden, wenn die Abholkarte nach dem
+iPhone-Kurzbefehl wieder in den Vordergrund kommt.
+*/
+
+let returnRefreshRunning=false;
+
+async function refreshOnReturn(){
+
+if(
+document.hidden ||
+returnRefreshRunning ||
+!cfg ||
+cfg.needs_pin
+){
+return;
+}
+
+returnRefreshRunning=true;
+
+try{
+await loadAll();
+}catch(error){
+console.error(error);
+}finally{
+returnRefreshRunning=false;
+}
+
+}
+
+window.addEventListener(
+"focus",
+refreshOnReturn
+);
+
+document.addEventListener(
+"visibilitychange",
+()=>{
+if(!document.hidden){
+refreshOnReturn();
+}
+}
+);
+
 boot();
+showUserLocation();
 
 </script>
 
