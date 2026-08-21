@@ -7,7 +7,7 @@ import threading
 
 from datetime import datetime, timezone
 from functools import wraps
-from urllib.parse import urlparse, unquote
+from urllib.parse import parse_qs, urlencode, urlparse, unquote
 
 import requests
 from bs4 import BeautifulSoup
@@ -207,7 +207,39 @@ def extract_ad_id(url):
             url
         )
 
-    return m.group(1) if m else None
+    if m:
+        return m.group(1)
+
+    p = urlparse(url)
+    host = p.netloc.lower()
+
+    if host.endswith("mobile.de"):
+        return (parse_qs(p.query).get("id") or [None])[0]
+
+    if host.endswith("autoscout24.de"):
+        m = re.search(
+            r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:/|$)",
+            p.path,
+            flags=re.I
+        )
+        return m.group(1).lower() if m else None
+
+    return None
+
+
+def marketplace_source(url):
+    host = urlparse(url or "").netloc.lower()
+
+    if host.endswith("mobile.de"):
+        return "mobile.de"
+
+    if host.endswith("autoscout24.de"):
+        return "autoscout24"
+
+    if host.endswith("kleinanzeigen.de"):
+        return "kleinanzeigen"
+
+    return "direct"
 
 
 def clean_url(url):
@@ -221,7 +253,16 @@ def clean_url(url):
     scheme = p.scheme or "https"
     host = p.netloc or "www.kleinanzeigen.de"
 
-    return f"{scheme}://{host}{p.path}"
+    path = p.path or "/"
+    query = ""
+
+    if host.lower().endswith("mobile.de"):
+        mobile_id = (parse_qs(p.query).get("id") or [""])[0]
+
+        if mobile_id:
+            query = "?" + urlencode({"id": mobile_id})
+
+    return f"{scheme}://{host}{path}{query}"
 
 
 def extract_first_url(text):
@@ -281,8 +322,7 @@ def geocode(q):
             params={
                 "q": q,
                 "format": "jsonv2",
-                "limit": 1,
-                "countrycodes": "de"
+                "limit": 1
             },
             headers={"User-Agent": "Abholkarte/1.0"},
             timeout=20
@@ -322,7 +362,7 @@ def geocode(q):
 
 
 # ------------------------------------------------------------
-# API-DIENST Ã¢ÂÂ NUR OPTIONAL
+# API-DIENST â NUR OPTIONAL
 # ------------------------------------------------------------
 
 def klaz_get(path, params=None):
@@ -515,7 +555,7 @@ def parse_html_ad(url, html, source="shortcut-html"):
                 except Exception:
                     pass
 
-                symbol = "Ã¢ÂÂ¬" if currency == "EUR" else currency
+                symbol = "â¬" if currency == "EUR" else currency
                 price_text = f"{price} {symbol}"
 
         address = obj.get("address")
@@ -565,6 +605,35 @@ def parse_html_ad(url, html, source="shortcut-html"):
     if not title:
         title = "Kleinanzeige"
 
+    if source in ("mobile.de", "autoscout24"):
+        if not price_text:
+            price_match = re.search(
+                r"(?:fÃ¼r\s*)?(â¬\s*)?([0-9][0-9.\s]*)(?:,\d{2})?\s*â¬",
+                title,
+                flags=re.I
+            )
+
+            if price_match:
+                amount_text = re.sub(
+                    r"[^0-9]",
+                    "",
+                    price_match.group(2)
+                )
+
+                if amount_text:
+                    price_amount = float(amount_text)
+                    price_text = (
+                        f"{int(price_amount):,} â¬"
+                        .replace(",", ".")
+                    )
+
+        title = re.sub(
+            r"\s+fÃ¼r\s+â¬?\s*[0-9][0-9.\s]*(?:,\d{2})?\s*â¬?.*$",
+            "",
+            title,
+            flags=re.I
+        ).strip()
+
     if not price_text:
         price_selectors = [
             "#viewad-price",
@@ -582,7 +651,7 @@ def parse_html_ad(url, html, source="shortcut-html"):
                     strip=True
                 )
 
-                if "Ã¢ÂÂ¬" in txt:
+                if "â¬" in txt:
                     price_text = txt
                     break
 
@@ -611,6 +680,34 @@ def parse_html_ad(url, html, source="shortcut-html"):
                 if txt:
                     place = txt
                     break
+
+    if source == "mobile.de":
+        address = soup.select_one(
+            '[data-testid="vip-dealer-box-seller-address2"]'
+        )
+
+        if address:
+            place = address.get_text(" ", strip=True)
+            place = re.sub(r"^DE-", "", place)
+
+        map_link = soup.select_one(
+            'a[href*="maps.google.com/maps?q="]'
+        )
+
+        if map_link:
+            try:
+                coords = (
+                    parse_qs(
+                        urlparse(map_link.get("href", "")).query
+                    ).get("q")
+                    or [""]
+                )[0].split(",")
+
+                if len(coords) == 2:
+                    lat = float(coords[0])
+                    lon = float(coords[1])
+            except Exception:
+                pass
 
     if (lat is None or lon is None) and place:
         g = geocode(place)
@@ -641,10 +738,10 @@ def parse_html_ad(url, html, source="shortcut-html"):
 
 
 # ------------------------------------------------------------
-# DIREKTER SERVERABRUF Ã¢ÂÂ OPTIONAL
+# DIREKTER SERVERABRUF â OPTIONAL
 # ------------------------------------------------------------
 
-def request_kleinanzeigen(url):
+def request_marketplace(url):
     return requests.get(
         url,
         headers={
@@ -671,13 +768,13 @@ def page_is_removed(response, soup):
     ).lower()
 
     removed_signals = [
-        "anzeige ist nicht mehr verfÃÂ¼gbar",
-        "diese anzeige ist nicht mehr verfÃÂ¼gbar",
-        "anzeige wurde gelÃÂ¶scht",
-        "diese anzeige wurde gelÃÂ¶scht",
+        "anzeige ist nicht mehr verfÃ¼gbar",
+        "diese anzeige ist nicht mehr verfÃ¼gbar",
+        "anzeige wurde gelÃ¶scht",
+        "diese anzeige wurde gelÃ¶scht",
         "anzeige existiert nicht mehr",
-        "angebot ist nicht mehr verfÃÂ¼gbar",
-        "dieses angebot ist nicht mehr verfÃÂ¼gbar"
+        "angebot ist nicht mehr verfÃ¼gbar",
+        "dieses angebot ist nicht mehr verfÃ¼gbar"
     ]
 
     return any(
@@ -691,11 +788,12 @@ def parse_direct_ad(url):
         raise RuntimeError("DIRECT_FETCH_DISABLED")
 
     url = clean_url(url)
-    response = request_kleinanzeigen(url)
+    source = marketplace_source(url)
+    response = request_marketplace(url)
 
     if response.status_code in (403, 429):
         raise RuntimeError(
-            f"KLEINANZEIGEN_BLOCKED_{response.status_code}"
+            f"{source.upper()}_BLOCKED_{response.status_code}"
         )
 
     soup = BeautifulSoup(
@@ -708,13 +806,13 @@ def parse_direct_ad(url):
 
     if response.status_code >= 400:
         raise RuntimeError(
-            f"KLEINANZEIGEN_HTTP_{response.status_code}"
+            f"{source.upper()}_HTTP_{response.status_code}"
         )
 
     return parse_html_ad(
         response.url,
         response.text,
-        source="direct"
+        source=source
     )
 
 
@@ -868,7 +966,7 @@ def normalize_api_ad(
 
         if amount is not None:
             price_text = (
-                f"{amount:,.0f} Ã¢ÂÂ¬"
+                f"{amount:,.0f} â¬"
                 .replace(",", ".")
             )
 
@@ -1298,7 +1396,7 @@ def import_html():
 
 
 # ------------------------------------------------------------
-# KLASSISCHER IMPORT Ã¢ÂÂ NUR OPTIONAL
+# KLASSISCHER IMPORT â NUR OPTIONAL
 # ------------------------------------------------------------
 
 @app.post("/api/import/ad")
@@ -1330,12 +1428,13 @@ def import_ad():
         ), 400
 
     aid = extract_ad_id(url)
+    source = marketplace_source(url)
 
     if not aid:
         return jsonify(
             {
                 "error":
-                    "Inserat-ID konnte "
+                    "Anzeigen-ID konnte "
                     "aus dem Link nicht "
                     "erkannt werden."
             }
@@ -1351,7 +1450,8 @@ def import_ad():
             direct_error = str(e)
 
     if (
-        api_fallback_enabled()
+        source == "kleinanzeigen"
+        and api_fallback_enabled()
         and api_key()
     ):
         try:
@@ -1394,7 +1494,7 @@ def import_ad():
                 direct_error
                 or (
                     "Serverabruf deaktiviert. "
-                    "Bitte ÃÂ¼ber den iPhone-"
+                    "Bitte Ã¼ber den iPhone-"
                     "Kurzbefehl importieren."
                 ),
             "can_manual": True,
@@ -1466,7 +1566,7 @@ def patch_ad(rid):
 
 
 # ------------------------------------------------------------
-# STATUS-PRÃÂFUNG
+# STATUS-PRÃFUNG
 # ------------------------------------------------------------
 
 @app.post("/api/refresh")
@@ -1480,7 +1580,7 @@ def refresh_ads():
                 "blocked": 0,
                 "errors": [],
                 "message":
-                    "Direkte StatusprÃÂ¼fung ist "
+                    "Direkte StatusprÃ¼fung ist "
                     "deaktiviert."
             }
         )
@@ -1492,7 +1592,7 @@ def refresh_ads():
             "blocked": 0,
             "errors": [],
             "message":
-                "Direkte StatusprÃÂ¼fung aktuell "
+                "Direkte StatusprÃ¼fung aktuell "
                 "nicht verwendet."
         }
     )
@@ -1763,7 +1863,7 @@ def route():
             {
                 "error":
                     "Mindestens eine "
-                    "Abholung auswÃÂ¤hlen."
+                    "Abholung auswÃ¤hlen."
             }
         ), 400
 
