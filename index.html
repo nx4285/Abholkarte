@@ -734,10 +734,26 @@ const params=new URLSearchParams(
 window.location.search
 );
 
-const shared=params.get("share");
+let shared=
+params.get("share") ||
+params.get("url") ||
+params.get("text") ||
+"";
 
 if(!shared){
 return "";
+}
+
+for(let i=0;i<2;i++){
+try{
+const decoded=decodeURIComponent(shared);
+if(decoded===shared){
+break;
+}
+shared=decoded;
+}catch(error){
+break;
+}
 }
 
 return extractKleinanzeigenUrl(
@@ -774,7 +790,7 @@ console.log(error);
 }
 
 
-function showShareStatus(text,error=false){
+function showShareStatus(text,error=false,keep=false){
 
 const box=$("shareStatus");
 
@@ -788,12 +804,14 @@ box.classList.add("error");
 box.classList.remove("error");
 }
 
+if(!keep){
 setTimeout(
 ()=>{
 box.classList.add("hidden");
 },
 5000
 );
+}
 
 }
 
@@ -831,6 +849,11 @@ clearSharedUrl();
 
 await loadAll();
 
+const adsTab=document.querySelector('[data-tab="ads"]');
+if(adsTab){
+adsTab.click();
+}
+
 showShareStatus(
 "â Anzeige wurde zur Abholliste hinzugefÃ¼gt."
 );
@@ -841,10 +864,16 @@ focusAd(result.id);
 
 }catch(error){
 
-clearSharedUrl();
+$('adurl').value=sharedUrl;
+
+const addTab=document.querySelector('[data-tab="add"]');
+if(addTab){
+addTab.click();
+}
 
 showShareStatus(
-"Import fehlgeschlagen: "+error.message,
+"Import fehlgeschlagen: "+error.message+" â der Link steht unten zum erneuten Importieren.",
+true,
 true
 );
 
