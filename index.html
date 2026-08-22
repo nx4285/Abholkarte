@@ -54,6 +54,45 @@ aside{
 
 .mapwrap{position:relative}
 
+.shell.map-only{
+    position:relative;
+    display:block;
+}
+
+.shell.map-only aside{
+    position:absolute;
+    top:10px;
+    left:10px;
+    right:10px;
+    z-index:700;
+    padding:0;
+    overflow:visible;
+    pointer-events:none;
+}
+
+.shell.map-only .tabs{
+    display:inline-flex;
+    max-width:calc(100vw - 20px);
+    padding:6px;
+    border-radius:12px;
+    background:white;
+    box-shadow:0 2px 14px #0003;
+    pointer-events:auto;
+}
+
+.shell.map-only #shareStatus,
+.shell.map-only .pane,
+.shell.map-only .routebox{
+    display:none!important;
+}
+
+.shell.map-only .mapwrap,
+.shell.map-only #map{
+    width:100%;
+    height:100%;
+    min-height:400px;
+}
+
 #map{
     width:100%;
     height:100%;
@@ -194,6 +233,47 @@ textarea{min-height:80px}
     box-shadow:0 2px 14px #0003;
 }
 
+.map-routebar{
+    display:none;
+    position:absolute;
+    left:10px;
+    right:10px;
+    bottom:calc(10px + env(safe-area-inset-bottom));
+    z-index:700;
+    padding:10px;
+    border-radius:12px;
+    background:white;
+    box-shadow:0 2px 14px #0004;
+}
+
+.shell.map-only .map-routebar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+}
+
+.map-routebar button{
+    flex:1;
+}
+
+.popup-route-choice{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-top:10px;
+    padding:9px;
+    border-radius:9px;
+    background:#f3f4f6;
+    font-weight:700;
+}
+
+.popup-route-choice input{
+    width:20px;
+    height:20px;
+    margin:0;
+}
+
 .map-pin{
     width:24px;
     height:24px;
@@ -206,6 +286,17 @@ textarea{min-height:80px}
 .map-pin.red{background:#dc2626}
 .map-pin.blue{background:#2563eb}
 .map-pin.green{background:#16a34a}
+
+.map-pin.selected{
+    background:#f59e0b;
+}
+
+.map-pin.selected span{
+    width:12px;
+    height:12px;
+    margin:4px;
+    background:white;
+}
 
 .map-pin span{
     display:block;
@@ -231,6 +322,18 @@ textarea{min-height:80px}
     color:#991b1b;
 }
 
+.popup-ad-link{
+    display:block;
+    margin-top:10px;
+    padding:9px 12px;
+    border-radius:9px;
+    background:#111827;
+    color:white!important;
+    font-weight:700;
+    text-align:center;
+    text-decoration:none;
+}
+
 @media(max-width:800px){
     .shell{
         display:block;
@@ -244,6 +347,16 @@ textarea{min-height:80px}
     #map{
         height:52dvh;
         min-height:350px;
+    }
+
+    .shell.map-only{
+        height:calc(100dvh - 52px);
+    }
+
+    .shell.map-only .mapwrap,
+    .shell.map-only #map{
+        height:100%;
+        min-height:100%;
     }
 }
 </style>
@@ -272,6 +385,7 @@ textarea{min-height:80px}
 
 <div class="tabs">
 <button class="tab active" data-tab="ads">Anzeigen</button>
+<button class="tab" data-tab="map">Karte</button>
 <button class="tab" data-tab="add">HinzufÃ¼gen</button>
 <button class="tab" data-tab="search">Suchen</button>
 <button class="tab" data-tab="route">Route</button>
@@ -407,6 +521,10 @@ placeholder="mindestens 4 Zeichen"
 <div class="mapwrap">
 <div id="map"></div>
 <div id="routebox" class="routebox hidden"></div>
+<div id="mapRouteBar" class="map-routebar">
+<span><b id="mapRouteCount">0</b> gewÃ¤hlt</span>
+<button id="mapGoogleRouteButton">Route in Google Maps</button>
+</div>
 </div>
 
 </div>
@@ -422,6 +540,7 @@ let markers=[];
 let routeLayer=null;
 let cfg={};
 let userLocationMarker=null;
+let currentPosition=null;
 
 const $=id=>document.getElementById(id);
 
@@ -543,6 +662,11 @@ position.coords.latitude,
 position.coords.longitude
 ];
 
+currentPosition={
+lat:position.coords.latitude,
+lon:position.coords.longitude
+};
+
 if(userLocationMarker){
 userLocationMarker.setLatLng(point);
 return;
@@ -577,7 +701,7 @@ timeout:15000
 }
 
 
-function pinIcon(vehicle){
+function pinIcon(vehicle,selected=false){
 
 const color=vehicle ? "red" : "blue";
 
@@ -586,6 +710,7 @@ className:"",
 html:
 '<div class="map-pin '+
 color+
+(selected ? " selected" : "")+
 '"><span></span></div>',
 iconSize:[24,24],
 iconAnchor:[12,24],
@@ -848,6 +973,12 @@ element=>element.classList.add("hidden")
 
 button.classList.add("active");
 
+const mapOnly=button.dataset.tab==="map";
+document.querySelector(".shell").classList.toggle(
+"map-only",
+mapOnly
+);
+
 const pane=$(button.dataset.tab);
 
 if(pane){
@@ -1080,7 +1211,8 @@ ad.deleted ? 0.45 : 1,
 
 icon:
 pinIcon(
-isVehicle(ad)
+isVehicle(ad),
+Boolean(ad.selected)
 )
 }
 )
@@ -1092,14 +1224,75 @@ esc(ad.title||"")+
 "</b><br>"+
 esc(ad.price_text||"")+
 "<br>"+
-esc(ad.place||"")
+esc(ad.place||"")+
+'<label class="popup-route-choice"><input type="checkbox" data-popup-select="'+esc(ad.id)+'" '+(ad.selected ? "checked" : "")+'> Zur Route hinzufÃ¼gen</label>'+
+(ad.url
+? '<a class="popup-ad-link" href="'+esc(ad.url)+'" target="_blank" rel="noopener noreferrer">Anzeige Ã¶ffnen</a>'
+: "")
 );
+
+marker.on("popupopen",()=>{
+
+const checkbox=document.querySelector(
+'[data-popup-select="'+ad.id+'"]'
+);
+
+if(!checkbox){
+return;
+}
+
+checkbox.addEventListener("change",async()=>{
+checkbox.disabled=true;
+await selectAd(ad.id,checkbox.checked);
+checkbox.disabled=false;
+});
+
+});
 
 marker._aid=ad.id;
 
 markers.push(marker);
 
 });
+
+updateSelectionUi();
+
+}
+
+
+function updateSelectionUi(){
+
+const selected=ads.filter(
+ad=>ad.selected && !ad.deleted
+);
+
+$('mapRouteCount').textContent=selected.length;
+$('mapGoogleRouteButton').disabled=selected.length===0;
+
+markers.forEach(marker=>{
+
+const ad=ads.find(
+item=>Number(item.id)===Number(marker._aid)
+);
+
+if(ad){
+marker.setIcon(
+pinIcon(isVehicle(ad),Boolean(ad.selected))
+);
+}
+
+});
+
+document.querySelectorAll('[data-select-id]').forEach(
+checkbox=>{
+const ad=ads.find(
+item=>Number(item.id)===Number(checkbox.dataset.selectId)
+);
+if(ad){
+checkbox.checked=Boolean(ad.selected);
+}
+}
+);
 
 }
 
@@ -1125,6 +1318,8 @@ item=>Number(item.id)===Number(id)
 if(ad){
 ad.selected=value ? 1 : 0;
 }
+
+updateSelectionUi();
 
 }catch(error){
 
@@ -1654,6 +1849,123 @@ alert(error.message);
 }
 
 
+function getRoutePosition(){
+
+if(currentPosition){
+return Promise.resolve(currentPosition);
+}
+
+if(!navigator.geolocation){
+return Promise.reject(
+new Error("Standort ist auf diesem GerÃ¤t nicht verfÃ¼gbar.")
+);
+}
+
+return new Promise((resolve,reject)=>{
+
+navigator.geolocation.getCurrentPosition(
+position=>{
+currentPosition={
+lat:position.coords.latitude,
+lon:position.coords.longitude
+};
+resolve(currentPosition);
+},
+()=>reject(
+new Error("Bitte erlaube den Standortzugriff, damit die Route an deinem Standort starten kann.")
+),
+{
+enableHighAccuracy:true,
+maximumAge:60000,
+timeout:15000
+}
+);
+
+});
+
+}
+
+
+async function openSelectedRouteInGoogleMaps(){
+
+const selected=ads.filter(
+ad=>ad.selected && !ad.deleted &&
+Number.isFinite(Number(ad.lat)) &&
+Number.isFinite(Number(ad.lon))
+);
+
+if(!selected.length){
+alert("Bitte zuerst mindestens eine Stecknadel auswÃ¤hlen.");
+return;
+}
+
+if(selected.length>9){
+alert("Google Maps Ã¼bernimmt hÃ¶chstens 9 ausgewÃ¤hlte Zwischenstopps zuverlÃ¤ssig. Bitte wÃ¤hle hÃ¶chstens 9 Stecknadeln aus.");
+return;
+}
+
+const button=$("mapGoogleRouteButton");
+button.disabled=true;
+button.textContent="Route wird erstelltâ¦";
+
+try{
+
+const start=await getRoutePosition();
+
+const result=await api(
+"/api/route",
+{
+method:"POST",
+body:JSON.stringify({
+start,
+end:null,
+ad_ids:selected.map(ad=>ad.id)
+})
+}
+);
+
+const orderedAds=(result.order||[])
+.filter(item=>item.id!=null)
+.map(item=>ads.find(ad=>Number(ad.id)===Number(item.id)))
+.filter(Boolean);
+
+if(!orderedAds.length){
+throw new Error("FÃ¼r die Auswahl konnte keine Route erstellt werden.");
+}
+
+if(routeLayer){
+map.removeLayer(routeLayer);
+}
+
+routeLayer=L.geoJSON(result.geometry).addTo(map);
+
+const startPoint=start.lat+","+start.lon;
+const waypoints=orderedAds.map(
+ad=>Number(ad.lat)+","+Number(ad.lon)
+);
+
+const params=new URLSearchParams({
+api:"1",
+origin:startPoint,
+destination:startPoint,
+waypoints:waypoints.join("|"),
+travelmode:"driving"
+});
+
+window.location.href=
+"https://www.google.com/maps/dir/?"+
+params.toString();
+
+}catch(error){
+alert(error.message);
+}finally{
+button.disabled=false;
+button.textContent="Route in Google Maps";
+}
+
+}
+
+
 async function updateSetupStatus(){
 
 try{
@@ -1786,6 +2098,11 @@ addSearch
 $("routeButton").addEventListener(
 "click",
 planRoute
+);
+
+$("mapGoogleRouteButton").addEventListener(
+"click",
+openSelectedRouteInGoogleMaps
 );
 
 $("settingsButton").addEventListener(
