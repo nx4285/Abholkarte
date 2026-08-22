@@ -231,6 +231,18 @@ textarea{min-height:80px}
     color:#991b1b;
 }
 
+.popup-link{
+    display:block;
+    margin-top:9px;
+    padding:9px 12px;
+    border-radius:9px;
+    background:#111827;
+    color:white!important;
+    font-weight:700;
+    text-align:center;
+    text-decoration:none!important;
+}
+
 @media(max-width:800px){
     .shell{
         display:block;
@@ -1092,7 +1104,14 @@ esc(ad.title||"")+
 "</b><br>"+
 esc(ad.price_text||"")+
 "<br>"+
-esc(ad.place||"")
+esc(ad.place||"")+
+(
+ad.url
+? '<a class="popup-link" href="'+
+esc(ad.url)+
+'" target="_blank" rel="noopener noreferrer">Inserat \u00f6ffnen</a>'
+: ""
+)
 );
 
 marker._aid=ad.id;
