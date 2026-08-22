@@ -11,7 +11,7 @@ from urllib.parse import urlparse, unquote
 
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, jsonify, redirect, request, session, send_from_directory
+from flask import Flask, jsonify, request, session, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
@@ -1272,22 +1272,13 @@ def import_html():
 # KLASSISCHER IMPORT â NUR OPTIONAL
 # ------------------------------------------------------------
 
-@app.route("/api/import/ad", methods=["GET", "POST"])
+@app.post("/api/import/ad")
 @auth_required
 def import_ad():
-    if request.method == "GET":
-        raw_url = (
-            request.args.get("url")
-            or request.args.get("share")
-            or request.args.get("text")
-            or ""
-        )
-    else:
-        raw_url = (request.json or {}).get("url", "")
-
     url = (
-        extract_first_url(raw_url)
-        or str(raw_url).strip()
+        (request.json or {})
+        .get("url", "")
+        .strip()
     )
 
     if not url:
@@ -1312,12 +1303,7 @@ def import_ad():
     if direct_fetch_enabled():
         try:
             item = parse_direct_ad(url)
-            saved = upsert_ad(item)
-
-            if request.method == "GET":
-                return redirect("/")
-
-            return jsonify(saved)
+            return jsonify(upsert_ad(item))
         except Exception as e:
             direct_error = str(e)
 
@@ -1347,12 +1333,7 @@ def import_ad():
                 "api-fallback"
             )
 
-            saved = upsert_ad(item)
-
-            if request.method == "GET":
-                return redirect("/")
-
-            return jsonify(saved)
+            return jsonify(upsert_ad(item))
 
         except Exception as e:
             return jsonify(
