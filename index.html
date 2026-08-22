@@ -1,10 +1,49 @@
-small{
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+
+<title>Abholkarte</title>
+
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+*{box-sizing:border-box}
+
+body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:#f3f4f6;
+    color:#111827;
+}
+
+header{
+    position:sticky;
+    top:0;
+    z-index:1000;
+    background:#111827;
+    color:white;
+    padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+h1{margin:0;font-size:19px}
+h2,h3{margin-top:8px}
+
+.small{
     font-size:12px;
     color:#6b7280;
 }
 
 .shell{
-    display:block;
+    display:grid;
+    grid-template-columns:minmax(320px,420px) 1fr;
     height:calc(100dvh - 52px);
 }
 
@@ -13,11 +52,7 @@ aside{
     padding:12px;
 }
 
-.mapwrap{
-    position:relative;
-    height:calc(100dvh - 132px);
-    min-height:400px;
-}
+.mapwrap{position:relative}
 
 #map{
     width:100%;
@@ -216,13 +251,10 @@ textarea{min-height:80px}
 
     aside{padding-bottom:20px}
 
-    .mapwrap{
-        height:calc(100dvh - 142px);
-        min-height:350px;
-    }
+    .mapwrap{height:52dvh}
 
     #map{
-        height:100%;
+        height:52dvh;
         min-height:350px;
     }
 }
@@ -251,19 +283,12 @@ textarea{min-height:80px}
 <div id="shareStatus" class="share-status hidden"></div>
 
 <div class="tabs">
-<button class="tab active" data-tab="mapPane">Karte</button>
+<button class="tab active" data-tab="add">Karte</button>
 <button class="tab" data-tab="ads">Anzeigen</button>
 <button class="tab" data-tab="search">Suchen</button>
 <button class="tab" data-tab="route">Route</button>
 <button class="tab" data-tab="settings">Einstellungen</button>
 </div>
-
-<section id="mapPane" class="pane">
-<div class="mapwrap">
-<div id="map"></div>
-<div id="routebox" class="routebox hidden"></div>
-</div>
-</section>
 
 <section id="ads" class="pane hidden">
 
@@ -281,6 +306,34 @@ textarea{min-height:80px}
 
 <div id="adlist" class="card">
 <div class="small">Lade Anzeigen&#8230;</div>
+</div>
+
+</section>
+
+<section id="add" class="pane">
+
+<div class="card hidden">
+<h3>Link automatisch importieren</h3>
+
+<textarea
+id="adurl"
+placeholder="Kleinanzeigen-Link oder kompletten Teilen-Text einf&#252;gen"
+></textarea>
+
+<button id="importButton">Importieren</button>
+
+<div id="importmsg" class="small"></div>
+</div>
+
+<div class="card hidden">
+<h3>Manuell hinzuf&#252;gen</h3>
+
+<input id="mtitle" placeholder="Titel">
+<input id="mprice" placeholder="Preis">
+<input id="mplace" placeholder="PLZ / Ort">
+<input id="murl" placeholder="Kleinanzeigen-Link">
+
+<button id="manualButton">Speichern</button>
 </div>
 
 </section>
@@ -362,6 +415,11 @@ placeholder="mindestens 4 Zeichen"
 </section>
 
 </aside>
+
+<div class="mapwrap">
+<div id="map"></div>
+<div id="routebox" class="routebox hidden"></div>
+</div>
 
 </div>
 
@@ -1727,6 +1785,16 @@ selectVisible
 $("filter").addEventListener(
 "input",
 renderAds
+);
+
+$("importButton").addEventListener(
+"click",
+importAd
+);
+
+$("manualButton").addEventListener(
+"click",
+manualAd
 );
 
 $("saveSearchButton").addEventListener(
