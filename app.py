@@ -7,7 +7,7 @@ import threading
 
 from datetime import datetime, timezone
 from functools import wraps
-from urllib.parse import parse_qs, urlencode, urlparse, unquote
+from urllib.parse import urlparse, unquote
 
 import requests
 from bs4 import BeautifulSoup
@@ -27,6 +27,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "abholkarte.db")
 
 app = Flask(__name__)
+app.json.ensure_ascii = False
 
 app.secret_key = os.getenv(
     "FLASK_SECRET_KEY",
@@ -57,6 +58,60 @@ def now():
 
 def truthy(v):
     return str(v).strip().lower() in ("1", "true", "yes", "on")
+
+
+def repair_text_encoding(value):
+    """Repariert typische UTF-8/Windows-1252-Fehlinterpretationen."""
+    if not isinstance(value, str):
+        return value
+
+    text = value
+    markers = ("Ã", "Ã", "Ã¢â¬", "Ã¢â", "Ã°Å¸")
+
+    for _ in range(2):
+        before = sum(text.count(marker) for marker in markers)
+
+        if before == 0:
+            break
+
+        try:
+            candidate = text.encode("cp1252").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            break
+
+        after = sum(candidate.count(marker) for marker in markers)
+
+        if after >= before:
+            break
+
+        text = candidate
+
+    return text
+
+
+def repair_ad_text(ad):
+    ad = dict(ad)
+
+    for field in (
+        "title",
+        "price_text",
+        "place",
+        "note",
+        "description"
+    ):
+        if field in ad:
+            ad[field] = repair_text_encoding(ad.get(field))
+
+    return ad
+
+
+def response_html(response):
+    """Webseitenbytes bewusst als UTF-8 lesen statt als Latin-1 zu raten."""
+    try:
+        return response.content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        encoding = response.apparent_encoding or "utf-8"
+        return response.content.decode(encoding, errors="replace")
 
 
 def direct_fetch_enabled():
@@ -207,39 +262,7 @@ def extract_ad_id(url):
             url
         )
 
-    if m:
-        return m.group(1)
-
-    p = urlparse(url)
-    host = p.netloc.lower()
-
-    if host.endswith("mobile.de"):
-        return (parse_qs(p.query).get("id") or [None])[0]
-
-    if host.endswith("autoscout24.de"):
-        m = re.search(
-            r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:/|$)",
-            p.path,
-            flags=re.I
-        )
-        return m.group(1).lower() if m else None
-
-    return None
-
-
-def marketplace_source(url):
-    host = urlparse(url or "").netloc.lower()
-
-    if host.endswith("mobile.de"):
-        return "mobile.de"
-
-    if host.endswith("autoscout24.de"):
-        return "autoscout24"
-
-    if host.endswith("kleinanzeigen.de"):
-        return "kleinanzeigen"
-
-    return "direct"
+    return m.group(1) if m else None
 
 
 def clean_url(url):
@@ -253,16 +276,7 @@ def clean_url(url):
     scheme = p.scheme or "https"
     host = p.netloc or "www.kleinanzeigen.de"
 
-    path = p.path or "/"
-    query = ""
-
-    if host.lower().endswith("mobile.de"):
-        mobile_id = (parse_qs(p.query).get("id") or [""])[0]
-
-        if mobile_id:
-            query = "?" + urlencode({"id": mobile_id})
-
-    return f"{scheme}://{host}{path}{query}"
+    return f"{scheme}://{host}{p.path}"
 
 
 def extract_first_url(text):
@@ -322,7 +336,8 @@ def geocode(q):
             params={
                 "q": q,
                 "format": "jsonv2",
-                "limit": 1
+                "limit": 1,
+                "countrycodes": "de"
             },
             headers={"User-Agent": "Abholkarte/1.0"},
             timeout=20
@@ -605,35 +620,6 @@ def parse_html_ad(url, html, source="shortcut-html"):
     if not title:
         title = "Kleinanzeige"
 
-    if source in ("mobile.de", "autoscout24"):
-        if not price_text:
-            price_match = re.search(
-                r"(?:fÃ¼r\s*)?(â¬\s*)?([0-9][0-9.\s]*)(?:,\d{2})?\s*â¬",
-                title,
-                flags=re.I
-            )
-
-            if price_match:
-                amount_text = re.sub(
-                    r"[^0-9]",
-                    "",
-                    price_match.group(2)
-                )
-
-                if amount_text:
-                    price_amount = float(amount_text)
-                    price_text = (
-                        f"{int(price_amount):,} â¬"
-                        .replace(",", ".")
-                    )
-
-        title = re.sub(
-            r"\s+fÃ¼r\s+â¬?\s*[0-9][0-9.\s]*(?:,\d{2})?\s*â¬?.*$",
-            "",
-            title,
-            flags=re.I
-        ).strip()
-
     if not price_text:
         price_selectors = [
             "#viewad-price",
@@ -681,34 +667,6 @@ def parse_html_ad(url, html, source="shortcut-html"):
                     place = txt
                     break
 
-    if source == "mobile.de":
-        address = soup.select_one(
-            '[data-testid="vip-dealer-box-seller-address2"]'
-        )
-
-        if address:
-            place = address.get_text(" ", strip=True)
-            place = re.sub(r"^DE-", "", place)
-
-        map_link = soup.select_one(
-            'a[href*="maps.google.com/maps?q="]'
-        )
-
-        if map_link:
-            try:
-                coords = (
-                    parse_qs(
-                        urlparse(map_link.get("href", "")).query
-                    ).get("q")
-                    or [""]
-                )[0].split(",")
-
-                if len(coords) == 2:
-                    lat = float(coords[0])
-                    lon = float(coords[1])
-            except Exception:
-                pass
-
     if (lat is None or lon is None) and place:
         g = geocode(place)
 
@@ -741,7 +699,7 @@ def parse_html_ad(url, html, source="shortcut-html"):
 # DIREKTER SERVERABRUF â OPTIONAL
 # ------------------------------------------------------------
 
-def request_marketplace(url):
+def request_kleinanzeigen(url):
     return requests.get(
         url,
         headers={
@@ -788,16 +746,16 @@ def parse_direct_ad(url):
         raise RuntimeError("DIRECT_FETCH_DISABLED")
 
     url = clean_url(url)
-    source = marketplace_source(url)
-    response = request_marketplace(url)
+    response = request_kleinanzeigen(url)
+    html = response_html(response)
 
     if response.status_code in (403, 429):
         raise RuntimeError(
-            f"{source.upper()}_BLOCKED_{response.status_code}"
+            f"KLEINANZEIGEN_BLOCKED_{response.status_code}"
         )
 
     soup = BeautifulSoup(
-        response.text,
+        html,
         "html.parser"
     )
 
@@ -806,13 +764,13 @@ def parse_direct_ad(url):
 
     if response.status_code >= 400:
         raise RuntimeError(
-            f"{source.upper()}_HTTP_{response.status_code}"
+            f"KLEINANZEIGEN_HTTP_{response.status_code}"
         )
 
     return parse_html_ad(
         response.url,
-        response.text,
-        source=source
+        html,
+        source="direct"
     )
 
 
@@ -821,6 +779,8 @@ def parse_direct_ad(url):
 # ------------------------------------------------------------
 
 def upsert_ad(x):
+    x = repair_ad_text(x)
+
     if not x.get("url") and x.get("ad_id"):
         x["url"] = (
             "https://www.kleinanzeigen.de/"
@@ -925,7 +885,7 @@ def upsert_ad(x):
 
     con.commit()
 
-    out = dict(
+    out = repair_ad_text(
         c.execute(
             """
             SELECT *
@@ -1255,7 +1215,7 @@ def list_ads():
     con = db()
 
     rows = [
-        dict(x)
+        repair_ad_text(x)
         for x in con.execute(
             """
             SELECT *
@@ -1274,42 +1234,13 @@ def list_ads():
 @app.post("/api/ads/manual")
 @auth_required
 def manual_ad():
-    # iOS-Kurzbefehle kÃ¶nnen den geteilten Inhalt als reinen Text,
-    # URL, Liste oder Formularfeld Ã¼bermitteln. Deshalb lesen wir
-    # den Wert tolerant ein und ziehen die erste enthaltene URL heraus.
-    x = request.get_json(silent=True) or {}
+    x = request.json or {}
 
-    if not x:
-        x = request.form.to_dict()
-
-    raw_url = (
-        x.get("url")
-        or x.get("text")
-        or x.get("input")
-        or ""
+    url = (
+        clean_url(x.get("url", ""))
+        if x.get("url")
+        else ""
     )
-
-    if isinstance(raw_url, (list, tuple)):
-        raw_url = raw_url[0] if raw_url else ""
-
-    if isinstance(raw_url, dict):
-        raw_url = (
-            raw_url.get("url")
-            or raw_url.get("text")
-            or ""
-        )
-
-    raw_url = str(raw_url).strip()
-    url = clean_url(extract_first_url(raw_url) or raw_url)
-
-    if not url or not extract_ad_id(url):
-        return jsonify(
-            {
-                "error":
-                    "Kein gÃ¼ltiger Kleinanzeigen-Link empfangen.",
-                "received_keys": sorted(x.keys())
-            }
-        ), 400
 
     aid = extract_ad_id(url)
 
@@ -1402,25 +1333,11 @@ def import_html():
 @app.post("/api/import/ad")
 @auth_required
 def import_ad():
-    x = request.get_json(silent=True) or {}
-
-    if not x:
-        x = request.form.to_dict()
-
-    raw_url = x.get("url") or x.get("text") or ""
-
-    if isinstance(raw_url, (list, tuple)):
-        raw_url = raw_url[0] if raw_url else ""
-
-    if isinstance(raw_url, dict):
-        raw_url = (
-            raw_url.get("url")
-            or raw_url.get("text")
-            or ""
-        )
-
-    raw_url = str(raw_url).strip()
-    url = clean_url(extract_first_url(raw_url) or raw_url)
+    url = (
+        (request.json or {})
+        .get("url", "")
+        .strip()
+    )
 
     if not url:
         return jsonify(
@@ -1428,13 +1345,12 @@ def import_ad():
         ), 400
 
     aid = extract_ad_id(url)
-    source = marketplace_source(url)
 
     if not aid:
         return jsonify(
             {
                 "error":
-                    "Anzeigen-ID konnte "
+                    "Inserat-ID konnte "
                     "aus dem Link nicht "
                     "erkannt werden."
             }
@@ -1450,8 +1366,7 @@ def import_ad():
             direct_error = str(e)
 
     if (
-        source == "kleinanzeigen"
-        and api_fallback_enabled()
+        api_fallback_enabled()
         and api_key()
     ):
         try:
@@ -1942,7 +1857,7 @@ def route():
             "order":
                 [
                     {
-                        "label": p["label"],
+                        "label": repair_text_encoding(p["label"]),
                         "id": p["id"]
                     }
                     for _, p in ordered
