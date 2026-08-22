@@ -362,7 +362,7 @@ def geocode(q):
 
 
 # ------------------------------------------------------------
-# API-DIENST â NUR OPTIONAL
+# API-DIENST \u2013 NUR OPTIONAL
 # ------------------------------------------------------------
 
 def klaz_get(path, params=None):
@@ -555,7 +555,7 @@ def parse_html_ad(url, html, source="shortcut-html"):
                 except Exception:
                     pass
 
-                symbol = "â¬" if currency == "EUR" else currency
+                symbol = "\u20ac" if currency == "EUR" else currency
                 price_text = f"{price} {symbol}"
 
         address = obj.get("address")
@@ -608,7 +608,7 @@ def parse_html_ad(url, html, source="shortcut-html"):
     if source in ("mobile.de", "autoscout24"):
         if not price_text:
             price_match = re.search(
-                r"(?:fÃ¼r\s*)?(â¬\s*)?([0-9][0-9.\s]*)(?:,\d{2})?\s*â¬",
+                r"(?:f\u00fcr\s*)?(\u20ac\s*)?([0-9][0-9.\s]*)(?:,\d{2})?\s*\u20ac",
                 title,
                 flags=re.I
             )
@@ -623,12 +623,12 @@ def parse_html_ad(url, html, source="shortcut-html"):
                 if amount_text:
                     price_amount = float(amount_text)
                     price_text = (
-                        f"{int(price_amount):,} â¬"
+                        f"{int(price_amount):,} \u20ac"
                         .replace(",", ".")
                     )
 
         title = re.sub(
-            r"\s+fÃ¼r\s+â¬?\s*[0-9][0-9.\s]*(?:,\d{2})?\s*â¬?.*$",
+            r"\s+f\u00fcr\s+\u20ac?\s*[0-9][0-9.\s]*(?:,\d{2})?\s*\u20ac?.*$",
             "",
             title,
             flags=re.I
@@ -651,7 +651,7 @@ def parse_html_ad(url, html, source="shortcut-html"):
                     strip=True
                 )
 
-                if "â¬" in txt:
+                if "\u20ac" in txt:
                     price_text = txt
                     break
 
@@ -738,7 +738,7 @@ def parse_html_ad(url, html, source="shortcut-html"):
 
 
 # ------------------------------------------------------------
-# DIREKTER SERVERABRUF â OPTIONAL
+# DIREKTER SERVERABRUF \u2013 OPTIONAL
 # ------------------------------------------------------------
 
 def request_marketplace(url):
@@ -768,13 +768,13 @@ def page_is_removed(response, soup):
     ).lower()
 
     removed_signals = [
-        "anzeige ist nicht mehr verfÃ¼gbar",
-        "diese anzeige ist nicht mehr verfÃ¼gbar",
-        "anzeige wurde gelÃ¶scht",
-        "diese anzeige wurde gelÃ¶scht",
+        "anzeige ist nicht mehr verf\u00fcgbar",
+        "diese anzeige ist nicht mehr verf\u00fcgbar",
+        "anzeige wurde gel\u00f6scht",
+        "diese anzeige wurde gel\u00f6scht",
         "anzeige existiert nicht mehr",
-        "angebot ist nicht mehr verfÃ¼gbar",
-        "dieses angebot ist nicht mehr verfÃ¼gbar"
+        "angebot ist nicht mehr verf\u00fcgbar",
+        "dieses angebot ist nicht mehr verf\u00fcgbar"
     ]
 
     return any(
@@ -966,7 +966,7 @@ def normalize_api_ad(
 
         if amount is not None:
             price_text = (
-                f"{amount:,.0f} â¬"
+                f"{amount:,.0f} \u20ac"
                 .replace(",", ".")
             )
 
@@ -1274,8 +1274,8 @@ def list_ads():
 @app.post("/api/ads/manual")
 @auth_required
 def manual_ad():
-    # iOS-Kurzbefehle kÃ¶nnen den geteilten Inhalt als reinen Text,
-    # URL, Liste oder Formularfeld Ã¼bermitteln. Deshalb lesen wir
+    # iOS-Kurzbefehle k\u00f6nnen den geteilten Inhalt als reinen Text,
+    # URL, Liste oder Formularfeld \u00fcbermitteln. Deshalb lesen wir
     # den Wert tolerant ein und ziehen die erste enthaltene URL heraus.
     x = request.get_json(silent=True) or {}
 
@@ -1306,7 +1306,7 @@ def manual_ad():
         return jsonify(
             {
                 "error":
-                    "Kein gÃ¼ltiger Kleinanzeigen-Link empfangen.",
+                    "Kein g\u00fcltiger Kleinanzeigen-Link empfangen.",
                 "received_keys": sorted(x.keys())
             }
         ), 400
@@ -1396,7 +1396,7 @@ def import_html():
 
 
 # ------------------------------------------------------------
-# KLASSISCHER IMPORT â NUR OPTIONAL
+# KLASSISCHER IMPORT \u2013 NUR OPTIONAL
 # ------------------------------------------------------------
 
 @app.post("/api/import/ad")
@@ -1494,7 +1494,7 @@ def import_ad():
                 direct_error
                 or (
                     "Serverabruf deaktiviert. "
-                    "Bitte Ã¼ber den iPhone-"
+                    "Bitte \u00fcber den iPhone-"
                     "Kurzbefehl importieren."
                 ),
             "can_manual": True,
@@ -1566,7 +1566,7 @@ def patch_ad(rid):
 
 
 # ------------------------------------------------------------
-# STATUS-PRÃFUNG
+# STATUS-PR\u00dcFUNG
 # ------------------------------------------------------------
 
 @app.post("/api/refresh")
@@ -1580,7 +1580,7 @@ def refresh_ads():
                 "blocked": 0,
                 "errors": [],
                 "message":
-                    "Direkte StatusprÃ¼fung ist "
+                    "Direkte Statuspr\u00fcfung ist "
                     "deaktiviert."
             }
         )
@@ -1592,7 +1592,7 @@ def refresh_ads():
             "blocked": 0,
             "errors": [],
             "message":
-                "Direkte StatusprÃ¼fung aktuell "
+                "Direkte Statuspr\u00fcfung aktuell "
                 "nicht verwendet."
         }
     )
@@ -1863,7 +1863,7 @@ def route():
             {
                 "error":
                     "Mindestens eine "
-                    "Abholung auswÃ¤hlen."
+                    "Abholung ausw\u00e4hlen."
             }
         ), 400
 
