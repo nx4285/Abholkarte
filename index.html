@@ -273,7 +273,10 @@ textarea{min-height:80px}
 
 <header>
 <h1>Abholkarte</h1>
+<div class="toolbar" style="margin:0">
+<button class="alt" id="settingsOpenButton" title="Einstellungen">&#9881;</button>
 <button class="alt" id="refreshButton">&#8635; Aktualisieren</button>
+</div>
 </header>
 
 <div class="shell">
@@ -284,10 +287,10 @@ textarea{min-height:80px}
 
 <div class="tabs">
 <button class="tab active" data-tab="add">Karte</button>
-<button class="tab" data-tab="ads">Anzeigen</button>
-<button class="tab" data-tab="search">Suchen</button>
-<button class="tab" data-tab="route">Route</button>
-<button class="tab" data-tab="settings">Einstellungen</button>
+<button class="tab" data-tab="ads">Alle Anzeigen</button>
+<button class="tab" data-tab="pkw1">PKW I</button>
+<button class="tab" data-tab="pkw2">PKW II</button>
+<button class="tab" data-tab="pkw3">PKW III</button>
 </div>
 
 <section id="ads" class="pane hidden">
@@ -308,6 +311,39 @@ textarea{min-height:80px}
 <div class="small">Lade Anzeigen&#8230;</div>
 </div>
 
+</section>
+
+<section id="pkw1" class="pane hidden">
+<div class="card">
+<div class="row">
+<input id="filterPkw1" placeholder="PKW I filtern&#8230;">
+<button class="alt" id="selectPkw1Button">Alle w&#228;hlen</button>
+</div>
+<div class="small"><span id="countPkw1">0 PKW</span> &#183; Blaue Stecknadeln bleiben sichtbar.</div>
+</div>
+<div id="adlistPkw1" class="card"><div class="small">Lade PKW&#8230;</div></div>
+</section>
+
+<section id="pkw2" class="pane hidden">
+<div class="card">
+<div class="row">
+<input id="filterPkw2" placeholder="PKW II filtern&#8230;">
+<button class="alt" id="selectPkw2Button">Alle w&#228;hlen</button>
+</div>
+<div class="small"><span id="countPkw2">0 PKW</span> &#183; Blaue Stecknadeln bleiben sichtbar.</div>
+</div>
+<div id="adlistPkw2" class="card"><div class="small">Lade PKW&#8230;</div></div>
+</section>
+
+<section id="pkw3" class="pane hidden">
+<div class="card">
+<div class="row">
+<input id="filterPkw3" placeholder="PKW III filtern&#8230;">
+<button class="alt" id="selectPkw3Button">Alle w&#228;hlen</button>
+</div>
+<div class="small"><span id="countPkw3">0 PKW</span> &#183; Blaue Stecknadeln bleiben sichtbar.</div>
+</div>
+<div id="adlistPkw3" class="card"><div class="small">Lade PKW&#8230;</div></div>
 </section>
 
 <section id="add" class="pane">
@@ -434,6 +470,7 @@ let markers=[];
 let routeLayer=null;
 let cfg={};
 let userLocationMarker=null;
+let activeView="add";
 
 const $=id=>document.getElementById(id);
 
@@ -850,6 +887,8 @@ button.addEventListener(
 "click",
 ()=>{
 
+activeView=button.dataset.tab;
+
 document.querySelectorAll(".tab").forEach(
 element=>element.classList.remove("active")
 );
@@ -866,6 +905,8 @@ if(pane){
 pane.classList.remove("hidden");
 }
 
+renderAds();
+
 setTimeout(
 ()=>map.invalidateSize(),
 100
@@ -877,6 +918,42 @@ setTimeout(
 });
 
 
+function viewConfig(){
+
+if(activeView==="pkw1"){
+return {filterId:"filterPkw1",countId:"countPkw1",listId:"adlistPkw1",vehiclesOnly:true};
+}
+
+if(activeView==="pkw2"){
+return {filterId:"filterPkw2",countId:"countPkw2",listId:"adlistPkw2",vehiclesOnly:true};
+}
+
+if(activeView==="pkw3"){
+return {filterId:"filterPkw3",countId:"countPkw3",listId:"adlistPkw3",vehiclesOnly:true};
+}
+
+if(activeView==="ads"){
+return {filterId:"filter",countId:"count",listId:"adlist",vehiclesOnly:false};
+}
+
+return null;
+}
+
+
+function adMatches(ad,filterText){
+
+return [
+ad.title,
+ad.place,
+ad.price_text
+]
+.join(" ")
+.toLowerCase()
+.includes(filterText);
+
+}
+
+
 function renderAds(){
 
 markers.forEach(
@@ -885,36 +962,39 @@ marker=>map.removeLayer(marker)
 
 markers=[];
 
-const filterText=
-$("filter").value.trim().toLowerCase();
+const config=viewConfig();
+const filterText=config
+? $(config.filterId).value.trim().toLowerCase()
+: "";
 
-const visible=ads.filter(ad=>{
+const listAds=config
+? ads.filter(ad=>(!config.vehiclesOnly || isVehicle(ad)) && adMatches(ad,filterText))
+: [];
 
-const text=[
-ad.title,
-ad.place,
-ad.price_text
-]
-.join(" ")
-.toLowerCase();
+let mapAds;
 
-return text.includes(filterText);
+if(!config){
+mapAds=ads;
+}else if(config.vehiclesOnly){
+mapAds=ads.filter(ad=>!isVehicle(ad) || adMatches(ad,filterText));
+}else{
+mapAds=ads.filter(ad=>adMatches(ad,filterText));
+}
 
-});
+if(config){
 
-$("count").textContent=
-visible.length+" Anzeigen";
+$(config.countId).textContent=
+listAds.length+(config.vehiclesOnly ? " PKW" : " Anzeigen");
 
+if(!listAds.length){
 
-if(!visible.length){
-
-$("adlist").innerHTML=
-'<div class="small">Noch keine Anzeigen.</div>';
+$(config.listId).innerHTML=
+'<div class="small">Keine passenden Anzeigen.</div>';
 
 }else{
 
-$("adlist").innerHTML=
-visible.map(ad=>{
+$(config.listId).innerHTML=
+listAds.map(ad=>{
 
 const checked=
 ad.selected ? "checked" : "";
@@ -1071,8 +1151,9 @@ Number(element.dataset.deleteId)
 
 });
 
+}
 
-visible.forEach(ad=>{
+mapAds.forEach(ad=>{
 
 const lat=Number(ad.lat);
 const lon=Number(ad.lon);
@@ -1156,19 +1237,21 @@ alert(error.message);
 
 async function selectVisible(){
 
+const config=viewConfig();
+
+if(!config){
+return;
+}
+
 const filterText=
-$("filter").value.trim().toLowerCase();
+$(config.filterId).value.trim().toLowerCase();
 
 const visible=ads.filter(ad=>{
 
-return [
-ad.title,
-ad.place,
-ad.price_text
-]
-.join(" ")
-.toLowerCase()
-.includes(filterText);
+return (
+(!config.vehiclesOnly || isVehicle(ad)) &&
+adMatches(ad,filterText)
+);
 
 });
 
@@ -1785,6 +1868,34 @@ selectVisible
 $("filter").addEventListener(
 "input",
 renderAds
+);
+
+$("filterPkw1").addEventListener("input",renderAds);
+$("filterPkw2").addEventListener("input",renderAds);
+$("filterPkw3").addEventListener("input",renderAds);
+
+$("selectPkw1Button").addEventListener("click",selectVisible);
+$("selectPkw2Button").addEventListener("click",selectVisible);
+$("selectPkw3Button").addEventListener("click",selectVisible);
+
+$("settingsOpenButton").addEventListener(
+"click",
+()=>{
+
+activeView="settings";
+
+document.querySelectorAll(".tab").forEach(
+element=>element.classList.remove("active")
+);
+
+document.querySelectorAll(".pane").forEach(
+element=>element.classList.add("hidden")
+);
+
+$("settings").classList.remove("hidden");
+renderAds();
+
+}
 );
 
 $("importButton").addEventListener(
