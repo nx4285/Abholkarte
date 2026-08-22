@@ -1051,16 +1051,26 @@ def parse_search_url(url):
 
 @app.get("/")
 def home():
-    return send_from_directory(
-        ".",
-        "index.html"
+    response = send_from_directory(
+        APP_DIR,
+        "index.html",
+        mimetype="text/html"
     )
+
+    response.headers["Content-Type"] = (
+        "text/html; charset=utf-8"
+    )
+    response.headers["Cache-Control"] = (
+        "no-cache, no-store, must-revalidate"
+    )
+
+    return response
 
 
 @app.get("/manifest.webmanifest")
 def manifest_file():
     return send_from_directory(
-        ".",
+        APP_DIR,
         "manifest.webmanifest"
     )
 
@@ -1068,7 +1078,7 @@ def manifest_file():
 @app.get("/sw.js")
 def service_worker_file():
     return send_from_directory(
-        ".",
+        APP_DIR,
         "sw.js",
         mimetype="application/javascript"
     )
@@ -1077,7 +1087,7 @@ def service_worker_file():
 @app.get("/icon-192.png")
 def icon192():
     return send_from_directory(
-        ".",
+        APP_DIR,
         "icon-192.png"
     )
 
@@ -1085,7 +1095,7 @@ def icon192():
 @app.get("/icon-512.png")
 def icon512():
     return send_from_directory(
-        ".",
+        APP_DIR,
         "icon-512.png"
     )
 
