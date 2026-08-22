@@ -255,13 +255,13 @@ textarea{min-height:80px}
 <div class="card">
 <h2>Abholkarte</h2>
 <input id="pin" type="password" placeholder="PIN">
-<button id="loginButton">Ãffnen</button>
+<button id="loginButton">&#214;ffnen</button>
 </div>
 </div>
 
 <header>
 <h1>Abholkarte</h1>
-<button class="alt" id="refreshButton">â» Aktualisieren</button>
+<button class="alt" id="refreshButton">&#8635; Aktualisieren</button>
 </header>
 
 <div class="shell">
@@ -272,7 +272,7 @@ textarea{min-height:80px}
 
 <div class="tabs">
 <button class="tab active" data-tab="ads">Anzeigen</button>
-<button class="tab" data-tab="add">HinzufÃ¼gen</button>
+<button class="tab" data-tab="add">Hinzuf&#252;gen</button>
 <button class="tab" data-tab="search">Suchen</button>
 <button class="tab" data-tab="route">Route</button>
 <button class="tab" data-tab="settings">Einstellungen</button>
@@ -282,18 +282,18 @@ textarea{min-height:80px}
 
 <div class="card">
 <div class="row">
-<input id="filter" placeholder="Filternâ¦">
-<button class="alt" id="selectAllButton">Alle wÃ¤hlen</button>
+<input id="filter" placeholder="Filtern&#8230;">
+<button class="alt" id="selectAllButton">Alle w&#228;hlen</button>
 </div>
 
 <div class="small">
 <span id="count">0 Anzeigen</span>
-Â· Autos rot, alles andere blau.
+&#183; Autos rot, alles andere blau.
 </div>
 </div>
 
 <div id="adlist" class="card">
-<div class="small">Lade Anzeigenâ¦</div>
+<div class="small">Lade Anzeigen&#8230;</div>
 </div>
 
 </section>
@@ -305,7 +305,7 @@ textarea{min-height:80px}
 
 <textarea
 id="adurl"
-placeholder="Kleinanzeigen-Link oder kompletten Teilen-Text einfÃ¼gen"
+placeholder="Kleinanzeigen-Link oder kompletten Teilen-Text einf&#252;gen"
 ></textarea>
 
 <button id="importButton">Importieren</button>
@@ -314,7 +314,7 @@ placeholder="Kleinanzeigen-Link oder kompletten Teilen-Text einfÃ¼gen"
 </div>
 
 <div class="card">
-<h3>Manuell hinzufÃ¼gen</h3>
+<h3>Manuell hinzuf&#252;gen</h3>
 
 <input id="mtitle" placeholder="Titel">
 <input id="mprice" placeholder="Preis">
@@ -362,7 +362,7 @@ placeholder="Start, z. B. 97783 Karsbach"
 
 <input
 id="rend"
-placeholder="Ziel â leer = Rundfahrt"
+placeholder="Ziel &#8211; leer = Rundfahrt"
 >
 
 <button id="routeButton">
@@ -386,7 +386,7 @@ Optimale Reihenfolge berechnen
 <input
 id="apikey"
 type="password"
-placeholder="klaz_live_â¦"
+placeholder="klaz_live_&#8230;"
 >
 
 <label class="small">Neue App-PIN</label>
@@ -431,7 +431,7 @@ L.tileLayer(
 "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
 {
 maxZoom:19,
-attribution:"Â© OpenStreetMap"
+attribution:"\u00a9 OpenStreetMap"
 }
 ).addTo(map);
 
@@ -596,7 +596,7 @@ popupAnchor:[0,-24]
 
 /*
 NEU:
-Ãbergebene Anzeige aus ?share= erkennen.
+\u00dcbergebene Anzeige aus ?share= erkennen.
 
 Beispiel:
 
@@ -687,7 +687,7 @@ return;
 }
 
 showShareStatus(
-"Anzeige wird zur Abholliste hinzugefÃ¼gt â¦"
+"Anzeige wird zur Abholliste hinzugef\u00fcgt \u2026"
 );
 
 try{
@@ -707,7 +707,7 @@ clearSharedUrl();
 await loadAll();
 
 showShareStatus(
-"â Anzeige wurde zur Abholliste hinzugefÃ¼gt."
+"\u2713 Anzeige wurde zur Abholliste hinzugef\u00fcgt."
 );
 
 if(result && result.id){
@@ -748,8 +748,8 @@ return;
 await loadAll();
 
 /*
-Nach normalem Start prÃ¼fen,
-ob der Kurzbefehl eine Anzeige Ã¼bergeben hat.
+Nach normalem Start pr\u00fcfen,
+ob der Kurzbefehl eine Anzeige \u00fcbergeben hat.
 */
 
 await importSharedAd();
@@ -788,7 +788,7 @@ await loadAll();
 
 /*
 Auch nach PIN-Eingabe einen eventuell
-Ã¼bergebenen Link verarbeiten.
+\u00fcbergebenen Link verarbeiten.
 */
 
 await importSharedAd();
@@ -938,9 +938,9 @@ ${esc(ad.title||"Ohne Titel")}
 ${esc(ad.price_text||"")}
 </span>
 
-Â· ${esc(ad.place||"Ort unbekannt")}
+\u00b7 ${esc(ad.place||"Ort unbekannt")}
 
-Â·
+\u00b7
 
 <span class="badge">
 ${esc(ad.source||"")}
@@ -972,7 +972,7 @@ Anzeige
 class="warn"
 data-delete-id="${ad.id}"
 >
-LÃ¶schen
+L\u00f6schen
 </button>
 
 </div>
@@ -1212,7 +1212,7 @@ async function deleteAd(id){
 
 if(
 !confirm(
-"Anzeige wirklich lÃ¶schen?"
+"Anzeige wirklich l\u00f6schen?"
 )
 ){
 return;
@@ -1241,7 +1241,7 @@ alert(error.message);
 async function importAd(){
 
 $("importmsg").textContent=
-"Importiereâ¦";
+"Importiere\u2026";
 
 try{
 
@@ -1349,7 +1349,7 @@ $("surl").value
 if(!url){
 
 throw new Error(
-"Bitte einen Suchlink einfÃ¼gen."
+"Bitte einen Suchlink einf\u00fcgen."
 );
 
 }
@@ -1423,7 +1423,7 @@ Synchronisieren
 class="warn"
 data-delete-search="${search.id}"
 >
-LÃ¶schen
+L\u00f6schen
 </button>
 
 </div>
@@ -1506,7 +1506,7 @@ async function deleteSearch(id){
 
 if(
 !confirm(
-"Gespeicherte Suche lÃ¶schen?"
+"Gespeicherte Suche l\u00f6schen?"
 )
 ){
 return;
@@ -1548,14 +1548,14 @@ await loadAll();
 
 let text=
 (result.checked||0)+
-" Anzeigen geprÃ¼ft.";
+" Anzeigen gepr\u00fcft.";
 
 if(result.removed){
 
 text+=
 " "+
 result.removed+
-" nicht mehr verfÃ¼gbar.";
+" nicht mehr verf\u00fcgbar.";
 
 }
 
@@ -1631,7 +1631,7 @@ $("routebox")
 $("routebox").innerHTML=
 "<b>"+
 esc(result.distance_km||"")+
-" km Â· ca. "+
+" km \u00b7 ca. "+
 esc(result.duration_min||"")+
 " min</b>"+
 "<ol>"+
@@ -1670,13 +1670,13 @@ settings.direct_fetch
 ? "an"
 : "aus"
 )+
-" Â· API-Fallback: "+
+" \u00b7 API-Fallback: "+
 (
 settings.api_fallback
 ? "an"
 : "aus"
 )+
-" Â· PIN: "+
+" \u00b7 PIN: "+
 (
 settings.pin_set
 ? "gesetzt"
