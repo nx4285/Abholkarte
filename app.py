@@ -27,7 +27,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "abholkarte.db")
 
 app = Flask(__name__)
-app.json.ensure_ascii = False
 
 app.secret_key = os.getenv(
     "FLASK_SECRET_KEY",
@@ -58,60 +57,6 @@ def now():
 
 def truthy(v):
     return str(v).strip().lower() in ("1", "true", "yes", "on")
-
-
-def repair_text_encoding(value):
-    """Repariert typische UTF-8/Windows-1252-Fehlinterpretationen."""
-    if not isinstance(value, str):
-        return value
-
-    text = value
-    markers = ("Ã", "Ã", "Ã¢â¬", "Ã¢â", "Ã°Å¸")
-
-    for _ in range(2):
-        before = sum(text.count(marker) for marker in markers)
-
-        if before == 0:
-            break
-
-        try:
-            candidate = text.encode("cp1252").decode("utf-8")
-        except (UnicodeEncodeError, UnicodeDecodeError):
-            break
-
-        after = sum(candidate.count(marker) for marker in markers)
-
-        if after >= before:
-            break
-
-        text = candidate
-
-    return text
-
-
-def repair_ad_text(ad):
-    ad = dict(ad)
-
-    for field in (
-        "title",
-        "price_text",
-        "place",
-        "note",
-        "description"
-    ):
-        if field in ad:
-            ad[field] = repair_text_encoding(ad.get(field))
-
-    return ad
-
-
-def response_html(response):
-    """Webseitenbytes bewusst als UTF-8 lesen statt als Latin-1 zu raten."""
-    try:
-        return response.content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        encoding = response.apparent_encoding or "utf-8"
-        return response.content.decode(encoding, errors="replace")
 
 
 def direct_fetch_enabled():
@@ -747,7 +692,6 @@ def parse_direct_ad(url):
 
     url = clean_url(url)
     response = request_kleinanzeigen(url)
-    html = response_html(response)
 
     if response.status_code in (403, 429):
         raise RuntimeError(
@@ -755,7 +699,7 @@ def parse_direct_ad(url):
         )
 
     soup = BeautifulSoup(
-        html,
+        response.text,
         "html.parser"
     )
 
@@ -769,7 +713,7 @@ def parse_direct_ad(url):
 
     return parse_html_ad(
         response.url,
-        html,
+        response.text,
         source="direct"
     )
 
@@ -779,8 +723,6 @@ def parse_direct_ad(url):
 # ------------------------------------------------------------
 
 def upsert_ad(x):
-    x = repair_ad_text(x)
-
     if not x.get("url") and x.get("ad_id"):
         x["url"] = (
             "https://www.kleinanzeigen.de/"
@@ -885,7 +827,7 @@ def upsert_ad(x):
 
     con.commit()
 
-    out = repair_ad_text(
+    out = dict(
         c.execute(
             """
             SELECT *
@@ -1051,26 +993,16 @@ def parse_search_url(url):
 
 @app.get("/")
 def home():
-    response = send_from_directory(
-        APP_DIR,
-        "index.html",
-        mimetype="text/html"
+    return send_from_directory(
+        ".",
+        "index.html"
     )
-
-    response.headers["Content-Type"] = (
-        "text/html; charset=utf-8"
-    )
-    response.headers["Cache-Control"] = (
-        "no-cache, no-store, must-revalidate"
-    )
-
-    return response
 
 
 @app.get("/manifest.webmanifest")
 def manifest_file():
     return send_from_directory(
-        APP_DIR,
+        ".",
         "manifest.webmanifest"
     )
 
@@ -1078,7 +1010,7 @@ def manifest_file():
 @app.get("/sw.js")
 def service_worker_file():
     return send_from_directory(
-        APP_DIR,
+        ".",
         "sw.js",
         mimetype="application/javascript"
     )
@@ -1087,7 +1019,7 @@ def service_worker_file():
 @app.get("/icon-192.png")
 def icon192():
     return send_from_directory(
-        APP_DIR,
+        ".",
         "icon-192.png"
     )
 
@@ -1095,7 +1027,7 @@ def icon192():
 @app.get("/icon-512.png")
 def icon512():
     return send_from_directory(
-        APP_DIR,
+        ".",
         "icon-512.png"
     )
 
@@ -1225,7 +1157,7 @@ def list_ads():
     con = db()
 
     rows = [
-        repair_ad_text(x)
+        dict(x)
         for x in con.execute(
             """
             SELECT *
@@ -1867,7 +1799,7 @@ def route():
             "order":
                 [
                     {
-                        "label": repair_text_encoding(p["label"]),
+                        "label": p["label"],
                         "id": p["id"]
                     }
                     for _, p in ordered
